@@ -64,6 +64,7 @@ script*.cjs
 script2.js
 script3.cjs
 temp*
+!src/utils/templateData.js
 update*.*
 assemble.cjs
 create_presentation.cjs
