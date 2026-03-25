@@ -318,6 +318,7 @@ const createBlankProject = () => ({
     const [gridEnabled, setGridEnabled] = useState(false)
     const [gridSize, setGridSize] = useState(20)
     const [snapToGrid, setSnapToGrid] = useState(false)
+    const [editorBackground, setEditorBackground] = useState(undefined)
 
     // Slide Master (global styling)
     const [slideMaster, setSlideMaster] = useState({
@@ -1273,6 +1274,9 @@ const createBlankProject = () => ({
     // Speaker Notes
     showSpeakerNotes,
     setShowSpeakerNotes,
+    // Editor Background
+    editorBackground,
+    setEditorBackground,
   }
 
   return (

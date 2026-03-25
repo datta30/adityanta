@@ -36,6 +36,16 @@ const normalizeSortLabel = (value) => {
   return DEFAULT_SORT_OPTION
 }
 
+const isUrlLike = (value) => typeof value === 'string' && /^(https?:\/\/|www\.)/i.test(value.trim())
+
+const getTemplatePreviewLabel = (template) => {
+  const preview = `${template?.preview || ''}`.trim()
+  if (!preview || isUrlLike(preview)) {
+    return (template?.title || 'Template').split(' ').slice(0, 3).join(' ')
+  }
+  return preview
+}
+
 const HomePage = () => {
   const navigate = useNavigate()
   const { user, logout, refreshUser } = useAuth()
@@ -621,7 +631,7 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
                 <div className="absolute top-6 right-8 w-10 h-10"><svg viewBox="0 0 50 50"><circle cx="25" cy="25" r="20" fill="#4CAF50" opacity="0.7" /></svg></div>
                 <div className="absolute bottom-3 right-3"><svg width="35" height="35" viewBox="0 0 50 50"><circle cx="25" cy="25" r="18" fill="#2196F3" opacity="0.7" /><ellipse cx="25" cy="25" rx="25" ry="8" fill="none" stroke="#FFD700" strokeWidth="2" transform="rotate(-20 25 25)" /></svg></div>
               </div>
-              <div className="text-center z-10 px-4"><h3 className="text-2xl font-black text-white drop-shadow-lg">{template.preview || template.title}</h3></div>
+              <div className="text-center z-10 px-4"><h3 className="text-2xl font-black text-white drop-shadow-lg">{getTemplatePreviewLabel(template)}</h3></div>
             </>
           )}
 
@@ -1229,7 +1239,7 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
                       <div key={template.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer group border border-gray-100">
                         <div onClick={() => handleTemplateClick(template)} className={`h-44 bg-gradient-to-br ${template.gradient} relative flex items-center justify-center overflow-hidden`}>
                           <div className={`absolute top-3 right-3 px-2.5 py-1 rounded-md text-xs font-semibold ${template.license === 'FREE' ? 'bg-white/95 text-primary' : 'bg-orange-500 text-white'}`}>{getLicenseDisplay(template.license)}</div>
-                          <div className="text-center z-10 px-4"><h3 className="text-2xl font-black text-white drop-shadow-lg">{template.preview}</h3></div>
+                          <div className="text-center z-10 px-4"><h3 className="text-2xl font-black text-white drop-shadow-lg">{getTemplatePreviewLabel(template)}</h3></div>
                         </div>
                         <div className="p-4"><h4 className="font-semibold text-gray-900 mb-2">{template.title}</h4>
                           <div className="flex items-center justify-between"><div className="flex items-center gap-3 text-xs text-gray-500"><span>{template.topic}</span><span className="w-1 h-1 rounded-full bg-gray-300" /><span>{template.frames} frames</span></div>

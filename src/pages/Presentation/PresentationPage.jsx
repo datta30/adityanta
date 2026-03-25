@@ -6,7 +6,7 @@ const WORLD_PADDING = 220
 
 const PresentationPage = () => {
   const navigate = useNavigate()
-  const { frames } = useEditor()
+    const { frames, editorBackground } = useEditor()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
@@ -461,7 +461,14 @@ const PresentationPage = () => {
 
   return (
     <div
-      className="fixed inset-0 bg-gray-900 flex items-center justify-center overflow-hidden"
+        className="fixed inset-0 flex items-center justify-center overflow-hidden"
+        style={{
+          backgroundColor: '#f5f5f2',
+          backgroundImage: editorBackground ? `linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.4)), url(${editorBackground})` : 'radial-gradient(circle, #c8c8c4 1px, transparent 1px)',
+          backgroundSize: editorBackground ? 'cover' : '28px 28px',
+          backgroundPosition: 'center',
+          backgroundAttachment: 'fixed'
+        }}
       onMouseMove={handleMouseMove}
       ref={containerRef}
     >

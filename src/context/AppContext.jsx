@@ -119,6 +119,11 @@ export const AppProvider = ({ children }) => {
     // Normalize frames count safely
     const count = parseInt(template.frames, 10)
     const normalizedFrames = isNaN(count) || count < 1 ? 1 : Math.min(count, 500)
+    const rawPreview = `${template.preview || ''}`.trim()
+    const isUrlLikePreview = /^(https?:\/\/|www\.)/i.test(rawPreview)
+    const normalizedPreview = (!rawPreview || isUrlLikePreview)
+      ? (template.title?.split(' ').slice(0, 2).join(' ').toUpperCase() || 'TEMPLATE')
+      : rawPreview
 
     return {
       ...template,
@@ -130,7 +135,7 @@ export const AppProvider = ({ children }) => {
       downloads: Math.max(0, parseInt(template.downloads, 10) || 0),
       license: template.license || 'FREE',
       gradient: template.gradient || defaultGradients[index % defaultGradients.length],
-      preview: template.preview || template.title?.split(' ').slice(0, 2).join(' ').toUpperCase() || 'TEMPLATE',
+      preview: normalizedPreview,
       description: template.description || `A beautiful ${template.topic || 'educational'} template with slides.`,
       is_favourite: template.is_favourite || template.isFavourite || false,
       s3_file_url: template.s3_file_url || template.s3FileUrl || null,

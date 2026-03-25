@@ -12,13 +12,30 @@ import RightClickMenu from '../../components/ContextMenu/RightClickMenu'
 import ShareDropdown from '../../components/Toolbar/ShareDropdown'
 import KeyboardShortcutsModal from '../../components/Modal/KeyboardShortcutsModal'
 import UpgradePlanModal from '../../components/Modal/UpgradePlanModal'
-import { templates as mockTemplates, topicBackgrounds } from '../../utils/templateData'
+import { templates as mockTemplates } from '../../utils/templateData'
 import backgroundData from '../../utils/backgroundData.json'
 
 const SLIDE_WIDTH = 1280
 const SLIDE_HEIGHT = 720
 const WORLD_PADDING = 220
 const templateRuntimeCache = new Map()
+
+const normalizeTopicForBackground = (topic) => {
+  const value = `${topic || ''}`.trim().toLowerCase()
+  const topicMap = {
+    mathematics: 'Maths',
+    maths: 'Maths',
+    math: 'Maths',
+    finance: 'Finance',
+    'financial markets management': 'Finance',
+    'fine arts / painting': 'Fine Arts - Painting',
+    'fine arts - painting': 'Fine Arts - Painting',
+    literature: 'Generic',
+    generic: 'Generic',
+    general: 'Generic',
+  }
+  return topicMap[value] || topic || 'Generic'
+}
 
 const EditorPage = () => {
   const navigate = useNavigate()
@@ -98,6 +115,9 @@ const EditorPage = () => {
     // Speaker Notes
     showSpeakerNotes,
     setShowSpeakerNotes,
+    // Editor Background
+    editorBackground,
+    setEditorBackground,
     // Auto-save
     lastSaved,
   } = useEditor()
@@ -115,7 +135,19 @@ const EditorPage = () => {
     return proj?.topic || null
   }, [templateId, allTemplates, isUserFilesLoaded, getProject])
 
-  const editorBgImage = projectTopic && topicBackgrounds[projectTopic] ? topicBackgrounds[projectTopic][1] : null
+  const defaultEditorBg = useMemo(() => {
+    const topic = normalizeTopicForBackground(projectTopic || 'Generic')
+    const bgs = backgroundData[topic] || backgroundData['Generic'] || []
+    return bgs.length > 0 ? bgs[Math.floor(Math.random() * bgs.length)] : null
+  }, [projectTopic])
+
+  const editorBgImage = editorBackground !== undefined ? editorBackground : defaultEditorBg
+
+  useEffect(() => {
+    if (editorBackground === undefined && defaultEditorBg !== null) {
+      setEditorBackground(defaultEditorBg)
+    }
+  }, [editorBackground, defaultEditorBg, setEditorBackground])
 
   // Local UI state
   const [showMediaDropdown, setShowMediaDropdown] = useState(false)
@@ -233,16 +265,12 @@ const EditorPage = () => {
     if (frames.length === 0 && templateId !== 'new' && !templateLoaded) {
       logger.warn('EditorPage: Frames are empty, initializing with blank frame')
       // Pick a random background from the project topic
-      const _blanktopic = projectTopic || 'Generic'
-      const _blankBgs = backgroundData[_blanktopic] || backgroundData['Generic'] || []
-      const _blankRandomBg = _blankBgs.length > 0 ? _blankBgs[Math.floor(Math.random() * _blankBgs.length)] : null
-      // Create a blank frame as fallback
       const blankFrame = {
         id: 1,
         title: 'Slide 1',
         preview: 'Slide 1',
         backgroundColor: '#ffffff',
-        backgroundImage: _blankRandomBg,
+        backgroundImage: null,
         notes: '',
         transition: 'fade',
         elements: [
@@ -360,6 +388,11 @@ const EditorPage = () => {
       setProjectTitle(userFile.title)
       setTemplateGradient(userFile.thumbnail || null)
       setTemplateThumbnailUrl(userFile.thumbnailUrl || null)
+      if ('editorBgImage' in userFile) {
+        setEditorBackground(userFile.editorBgImage)
+      } else {
+        setEditorBackground(undefined)
+      }
       setCurrentProjectId(userFile.id)
       localStorage.setItem('adityanta_autosave', JSON.stringify({
         title: userFile.title,
@@ -459,6 +492,7 @@ const EditorPage = () => {
         setProjectTitle(templateData.title)
         setTemplateGradient(templateData.gradient)
         setTemplateThumbnailUrl(templateData.thumbnailUrl)
+        setEditorBackground(undefined)
       } else {
         // Failed to load from backend → create fallback slides
         console.warn('[TEMPLATE] FALLBACK - Creating placeholder slides')
@@ -469,17 +503,13 @@ const EditorPage = () => {
         const fallbackTitle = apiTemplate?.title || 'Presentation'
         const slideCount = (typeof apiTemplate?.frames === 'number' && apiTemplate.frames > 0) ? apiTemplate.frames : 3
         const projectTopic = apiTemplate?.topic || 'Generic'
-        const topicBgs = backgroundData[projectTopic] || backgroundData['Generic'] || []
-        const randomBg = topicBgs.length > 0 ? topicBgs[Math.floor(Math.random() * topicBgs.length)] : null
-
         const fallbackFrames = Array.from({ length: slideCount }, (_, i) => {
-          const frameBg = topicBgs.length > 0 ? topicBgs[Math.floor(Math.random() * topicBgs.length)] : null
           return {
           id: i + 1,
           title: i === 0 ? fallbackTitle : `Slide ${i + 1}`,
           preview: i === 0 ? fallbackTitle : `Slide ${i + 1}`,
           backgroundColor: '#ffffff',
-          backgroundImage: frameBg,
+          backgroundImage: null,
           notes: '',
           transition: 'fade',
           elements: [
@@ -511,6 +541,7 @@ const EditorPage = () => {
         setProjectTitle(fallbackTitle)
         setTemplateGradient(null)
         setTemplateThumbnailUrl(apiTemplate?.thumbnail_url || null)
+        setEditorBackground(undefined)
       }
     })
     inFlightTemplateRef.current = { id: templateId, promise: requestPromise }
@@ -718,6 +749,7 @@ const EditorPage = () => {
         frames: frames,
         templateId: templateId,
         thumbnail: templateGradient || 'from-blue-400 to-purple-600',
+        editorBgImage: editorBgImage,
       }
       const savedFile = saveToUserFiles(projectData)
       setCurrentProjectId(savedFile.id)
@@ -729,7 +761,7 @@ const EditorPage = () => {
     } finally {
       setIsSaving(false)
     }
-  }, [currentProjectId, projectTitle, frames, templateId, templateGradient, saveToUserFiles, toast])
+  }, [currentProjectId, projectTitle, frames, templateId, templateGradient, editorBgImage, saveToUserFiles, toast])
 
   // Auto-save shortcut (Ctrl+S)
   useEffect(() => {
@@ -3558,13 +3590,13 @@ const EditorPage = () => {
             {/* Design Tab (Background Images) */}
             {rightPanelTab === 'design' && (
               <div className="space-y-3">
-                <p className="text-xs text-gray-500 font-medium">Slide Background</p>
+                <p className="text-xs text-gray-500 font-medium">Editor Background</p>
 
                 {/* Remove background button */}
                 <button
-                  onClick={() => updateFrameBackgroundImage(activeFrameId, null)}
+                  onClick={() => setEditorBackground(null)}
                   className={`w-full px-3 py-2 text-xs rounded-lg transition-all flex items-center gap-2 ${
-                    !activeFrame?.backgroundImage
+                    !editorBgImage
                       ? 'bg-primary/10 text-primary border border-primary/30'
                       : 'bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200'
                   }`}
@@ -3594,9 +3626,9 @@ const EditorPage = () => {
                       {images.map((imgPath, idx) => (
                         <button
                           key={imgPath}
-                          onClick={() => updateFrameBackgroundImage(activeFrameId, imgPath)}
+                          onClick={() => setEditorBackground(imgPath)}
                           className={`relative aspect-[16/9] rounded-md overflow-hidden border-2 transition-all hover:scale-105 hover:shadow-md ${
-                            activeFrame?.backgroundImage === imgPath
+                            editorBgImage === imgPath
                               ? 'border-primary ring-2 ring-primary/30 shadow-md'
                               : 'border-gray-200 hover:border-gray-400'
                           }`}
@@ -3608,7 +3640,7 @@ const EditorPage = () => {
                             className="w-full h-full object-cover"
                             loading="lazy"
                           />
-                          {activeFrame?.backgroundImage === imgPath && (
+                          {editorBgImage === imgPath && (
                             <div className="absolute inset-0 bg-primary/10 flex items-center justify-center">
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
                                 <polyline points="20 6 9 17 4 12" />
