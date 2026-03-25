@@ -65,6 +65,7 @@ script2.js
 script3.cjs
 temp*
 !src/utils/templateData.js
+!src/components/Modal/TemplateDetailModal.jsx
 update*.*
 assemble.cjs
 create_presentation.cjs
