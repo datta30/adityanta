@@ -3101,7 +3101,7 @@ const EditorPage = () => {
           className={`flex-1 flex flex-col canvas-area relative ${isDragOver ? 'bg-primary/10' : ''} ${isPanning ? (isDraggingPan ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
           style={{
             backgroundColor: '#f5f5f2',
-            backgroundImage: editorBgImage ? `linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.4)), url(${editorBgImage})` : 'radial-gradient(circle, #c8c8c4 1px, transparent 1px)',
+            backgroundImage: editorBgImage ? `linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.4)), url("${editorBgImage}")` : 'radial-gradient(circle, #c8c8c4 1px, transparent 1px)',
             backgroundSize: editorBgImage ? 'cover' : '28px 28px',
             backgroundPosition: 'center',
               backgroundAttachment: 'fixed',
