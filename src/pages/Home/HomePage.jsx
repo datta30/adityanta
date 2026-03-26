@@ -12,6 +12,7 @@ import EmptyState from '../../components/EmptyState/EmptyState'
 import TemplateDetailModal from '../../components/Modal/TemplateDetailModal'
 import UpgradePlanModal from '../../components/Modal/UpgradePlanModal'
 import { topics, licenses, sortOptions, formatDownloads, getLicenseDisplay, templates as mockTemplates } from '../../utils/templateData'
+import backgroundData from '../../utils/backgroundData.json'
 import { escapeRegex } from '../../utils/imageUtils'
 import { parsePPTX } from '../../utils/pptxImport'
 import { isPremiumUser, getRemainingFreeDownloads } from '../../utils/membership'
@@ -50,7 +51,7 @@ const HomePage = () => {
   const navigate = useNavigate()
   const { user, logout, refreshUser } = useAuth()
   const { config, favorites, fetchFavorites, addFavorite, removeFavorite, isFavorite, userFiles, trashedItems, deleteUserFile, restoreUserFile, permanentlyDeleteFile, saveProject, templates: apiTemplates, fetchTemplates, isLoadingTemplates, serverStatus } = useApp()
-  const { createNewProject } = useEditor()
+  const { createNewProject, setEditorBackground } = useEditor()
   const toast = useToast()
 
   // Restore saved filter preferences
@@ -68,6 +69,9 @@ const HomePage = () => {
   const [showSortDropdown, setShowSortDropdown] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState(null)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [showBackgroundPicker, setShowBackgroundPicker] = useState(false)
+  const [selectedBgCategory, setSelectedBgCategory] = useState('')
+  const [selectedNewProjectBackground, setSelectedNewProjectBackground] = useState(null)
   const [recentTemplateIds, setRecentTemplateIds] = useState(() => safeGetItem(RECENT_TEMPLATES_KEY, []))
   const [selectedTrashItems, setSelectedTrashItems] = useState(new Set())
 
@@ -122,6 +126,16 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
     { id: 'favourites', label: 'Bookmarks', icon: 'bookmark' },
     { id: 'trash', label: 'Trash', icon: 'trash' },
   ]
+  const backgroundCategories = useMemo(() => Object.keys(backgroundData), [])
+  const defaultBgCategory = useMemo(() => backgroundCategories[0] || 'Generic', [backgroundCategories])
+  const effectiveBgCategory = useMemo(
+    () => (backgroundData[selectedBgCategory] ? selectedBgCategory : defaultBgCategory),
+    [selectedBgCategory, defaultBgCategory]
+  )
+  const newProjectBackgrounds = useMemo(
+    () => backgroundData[effectiveBgCategory] || [],
+    [effectiveBgCategory]
+  )
 
   const getIcon = (type) => {
     switch (type) {
@@ -468,7 +482,15 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
   }
 
   const handleCreateNew = () => {
+    setSelectedBgCategory(defaultBgCategory)
+    setSelectedNewProjectBackground(null)
+    setShowBackgroundPicker(true)
+  }
+
+  const handleConfirmCreateNew = () => {
     createNewProject()
+    setEditorBackground(selectedNewProjectBackground)
+    setShowBackgroundPicker(false)
     navigate('/editor/new')
   }
 
@@ -1327,6 +1349,82 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
         </div>
       </div>
 
+      {showBackgroundPicker && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Choose background</h3>
+                <p className="text-sm text-gray-500">Select a background for your new project</p>
+              </div>
+              <button
+                onClick={() => setShowBackgroundPicker(false)}
+                className="w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                aria-label="Close background picker"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5 overflow-auto">
+              <div className="flex flex-wrap gap-2 mb-4">
+                {backgroundCategories.map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedBgCategory(category)}
+                    className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
+                      effectiveBgCategory === category
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-primary'
+                    }`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                <button
+                  onClick={() => setSelectedNewProjectBackground(null)}
+                  className={`relative aspect-video rounded-lg border-2 overflow-hidden transition-all ${
+                    selectedNewProjectBackground === null ? 'border-primary ring-2 ring-primary/30' : 'border-gray-200 hover:border-primary'
+                  }`}
+                >
+                  <div className="w-full h-full bg-[radial-gradient(circle,_#c8c8c4_1px,_transparent_1px)] [background-size:28px_28px] bg-[#f5f5f2] flex items-center justify-center text-xs font-semibold text-gray-600">
+                    No background
+                  </div>
+                </button>
+
+                {newProjectBackgrounds.map((imgPath) => (
+                  <button
+                    key={imgPath}
+                    onClick={() => setSelectedNewProjectBackground(imgPath)}
+                    className={`relative aspect-video rounded-lg border-2 overflow-hidden transition-all ${
+                      selectedNewProjectBackground === imgPath ? 'border-primary ring-2 ring-primary/30' : 'border-gray-200 hover:border-primary'
+                    }`}
+                  >
+                    <img src={imgPath} alt={effectiveBgCategory} className="w-full h-full object-cover" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-3">
+              <button
+                onClick={() => setShowBackgroundPicker(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmCreateNew}
+                className="px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-dark"
+              >
+                Create New
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedTemplate && <TemplateDetailModal template={selectedTemplate} onClose={() => setSelectedTemplate(null)} onUpgrade={() => { setSelectedTemplate(null); setShowUpgradeModal(true) }} onToggleFavorite={() => handleToggleFavorite(selectedTemplate)} isFavorite={isTemplateFavorite(selectedTemplate)} />}
       {showUpgradeModal && <UpgradePlanModal onClose={() => setShowUpgradeModal(false)} />}
     </div>
@@ -1334,4 +1432,3 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
 }
 
 export default HomePage
-
