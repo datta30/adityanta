@@ -70,7 +70,7 @@ const HomePage = () => {
   const [selectedTemplate, setSelectedTemplate] = useState(null)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showBackgroundPicker, setShowBackgroundPicker] = useState(false)
-  const [selectedBgCategory, setSelectedBgCategory] = useState('Generic')
+  const [selectedBgCategory, setSelectedBgCategory] = useState('')
   const [selectedNewProjectBackground, setSelectedNewProjectBackground] = useState(null)
   const [recentTemplateIds, setRecentTemplateIds] = useState(() => safeGetItem(RECENT_TEMPLATES_KEY, []))
   const [selectedTrashItems, setSelectedTrashItems] = useState(new Set())
@@ -126,8 +126,16 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
     { id: 'favourites', label: 'Bookmarks', icon: 'bookmark' },
     { id: 'trash', label: 'Trash', icon: 'trash' },
   ]
-  const backgroundCategories = Object.keys(backgroundData)
-  const newProjectBackgrounds = backgroundData[selectedBgCategory] || []
+  const backgroundCategories = useMemo(() => Object.keys(backgroundData), [])
+  const defaultBgCategory = useMemo(() => backgroundCategories[0] || 'Generic', [backgroundCategories])
+  const effectiveBgCategory = useMemo(
+    () => (backgroundData[selectedBgCategory] ? selectedBgCategory : defaultBgCategory),
+    [selectedBgCategory, defaultBgCategory]
+  )
+  const newProjectBackgrounds = useMemo(
+    () => backgroundData[effectiveBgCategory] || [],
+    [effectiveBgCategory]
+  )
 
   const getIcon = (type) => {
     switch (type) {
@@ -474,14 +482,14 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
   }
 
   const handleCreateNew = () => {
-    setSelectedBgCategory('Generic')
+    setSelectedBgCategory(defaultBgCategory)
     setSelectedNewProjectBackground(null)
     setShowBackgroundPicker(true)
   }
 
   const handleConfirmCreateNew = () => {
-    setEditorBackground(selectedNewProjectBackground)
     createNewProject()
+    setEditorBackground(selectedNewProjectBackground)
     setShowBackgroundPicker(false)
     navigate('/editor/new')
   }
@@ -1364,7 +1372,7 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
                     key={category}
                     onClick={() => setSelectedBgCategory(category)}
                     className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
-                      selectedBgCategory === category
+                      effectiveBgCategory === category
                         ? 'bg-primary text-white border-primary'
                         : 'bg-white text-gray-700 border-gray-300 hover:border-primary'
                     }`}
@@ -1394,7 +1402,7 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
                       selectedNewProjectBackground === imgPath ? 'border-primary ring-2 ring-primary/30' : 'border-gray-200 hover:border-primary'
                     }`}
                   >
-                    <img src={imgPath} alt={selectedBgCategory} className="w-full h-full object-cover" loading="lazy" />
+                    <img src={imgPath} alt={effectiveBgCategory} className="w-full h-full object-cover" loading="lazy" />
                   </button>
                 ))}
               </div>
