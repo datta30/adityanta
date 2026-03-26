@@ -16,11 +16,30 @@ import { escapeRegex } from '../../utils/imageUtils'
 import { parsePPTX } from '../../utils/pptxImport'
 import { isPremiumUser, getRemainingFreeDownloads } from '../../utils/membership'
 import { userAPI } from '../../services/api'
+import backgroundData from '../../utils/backgroundData.json'
 
 const RECENT_TEMPLATES_KEY = 'adityanta_recent_templates'
 const FILTER_PREFS_KEY = 'adityanta_filter_prefs'
 const MAX_RECENT = 6
 const DEFAULT_SORT_OPTION = 'New to Old'
+const NEW_PROJECT_BG_KEY = 'adityanta_new_project_bg'
+
+const normalizeTopicForBackground = (topic) => {
+  const value = `${topic || ''}`.trim().toLowerCase()
+  const topicMap = {
+    mathematics: 'Maths',
+    maths: 'Maths',
+    math: 'Maths',
+    finance: 'Finance',
+    'financial markets management': 'Finance',
+    'fine arts / painting': 'Fine Arts - Painting',
+    'fine arts - painting': 'Fine Arts - Painting',
+    literature: 'Generic',
+    generic: 'Generic',
+    general: 'Generic',
+  }
+  return topicMap[value] || topic || 'Generic'
+}
 
 const normalizeSortLabel = (value) => {
   if (value === 'Most Popular' || value === 'Alphabetical') return value
@@ -70,6 +89,8 @@ const HomePage = () => {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [recentTemplateIds, setRecentTemplateIds] = useState(() => safeGetItem(RECENT_TEMPLATES_KEY, []))
   const [selectedTrashItems, setSelectedTrashItems] = useState(new Set())
+  const [showNewBgModal, setShowNewBgModal] = useState(false)
+  const [newBgSearch, setNewBgSearch] = useState('')
 
   // Only use API templates - no demo data
   const preziDemoTemplate = {
@@ -85,6 +106,13 @@ const HomePage = () => {
     downloads: 9999
   }
 const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
+
+  const availableBackgrounds = useMemo(() => {
+    const entries = Object.entries(backgroundData || {})
+    if (!newBgSearch.trim()) return entries
+    const q = newBgSearch.toLowerCase()
+    return entries.filter(([topic]) => topic.toLowerCase().includes(q))
+  }, [newBgSearch])
 
   const topicOptions = topics
 
@@ -468,7 +496,17 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
   }
 
   const handleCreateNew = () => {
+    setShowNewBgModal(true)
+  }
+
+  const startNewProjectWithBackground = (backgroundPath = undefined) => {
+    if (backgroundPath !== undefined) {
+      sessionStorage.setItem(NEW_PROJECT_BG_KEY, JSON.stringify({ background: backgroundPath }))
+    } else {
+      sessionStorage.removeItem(NEW_PROJECT_BG_KEY)
+    }
     createNewProject()
+    setShowNewBgModal(false)
     navigate('/editor/new')
   }
 
@@ -1328,6 +1366,59 @@ const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
       </div>
 
       {selectedTemplate && <TemplateDetailModal template={selectedTemplate} onClose={() => setSelectedTemplate(null)} onUpgrade={() => { setSelectedTemplate(null); setShowUpgradeModal(true) }} onToggleFavorite={() => handleToggleFavorite(selectedTemplate)} isFavorite={isTemplateFavorite(selectedTemplate)} />}
+      {showNewBgModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowNewBgModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Choose a background for your new project</h3>
+                <p className="text-sm text-gray-500">You can change this later from the Design tab.</p>
+              </div>
+              <button onClick={() => setShowNewBgModal(false)} className="w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+              <input
+                value={newBgSearch}
+                onChange={(e) => setNewBgSearch(e.target.value)}
+                placeholder="Search topic backgrounds..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+              <button
+                onClick={() => startNewProjectWithBackground(undefined)}
+                className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-700"
+              >
+                Use Random Default
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[60vh] space-y-4">
+              {availableBackgrounds.map(([topic, images]) => (
+                <div key={topic}>
+                  <p className="text-sm font-semibold text-gray-700 mb-2">{normalizeTopicForBackground(topic)}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {images.map((imgPath, idx) => (
+                      <button
+                        key={`${topic}-${idx}-${imgPath}`}
+                        onClick={() => startNewProjectWithBackground(imgPath)}
+                        className="relative aspect-[16/9] rounded-lg overflow-hidden border border-gray-200 hover:border-primary hover:shadow-md transition-all"
+                        title={`${topic} ${idx + 1}`}
+                      >
+                        <img src={imgPath} alt={`${topic} ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {availableBackgrounds.length === 0 && (
+                <p className="text-sm text-gray-500">No background topics match your search.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {showUpgradeModal && <UpgradePlanModal onClose={() => setShowUpgradeModal(false)} />}
     </div>
   )

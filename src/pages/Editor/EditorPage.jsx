@@ -19,6 +19,7 @@ const SLIDE_WIDTH = 1280
 const SLIDE_HEIGHT = 720
 const WORLD_PADDING = 220
 const templateRuntimeCache = new Map()
+const NEW_PROJECT_BG_KEY = 'adityanta_new_project_bg'
 
 const normalizeTopicForBackground = (topic) => {
   const value = `${topic || ''}`.trim().toLowerCase()
@@ -259,6 +260,21 @@ const EditorPage = () => {
   }, [frameMapLayout])
 
   const activeFrameLayout = frameMapLayout.find((f) => f.id === activeFrameId) || { x: 400, y: 200, width: 640, height: 400 }
+
+  const frameBackgroundBounds = useMemo(() => {
+    if (!frameMapLayout.length) return null
+    const minX = Math.min(...frameMapLayout.map((f) => f.x))
+    const minY = Math.min(...frameMapLayout.map((f) => f.y))
+    const maxX = Math.max(...frameMapLayout.map((f) => f.x + f.width))
+    const maxY = Math.max(...frameMapLayout.map((f) => f.y + f.height))
+    const padding = 40
+    return {
+      x: minX - padding,
+      y: minY - padding,
+      width: (maxX - minX) + (padding * 2),
+      height: (maxY - minY) + (padding * 2),
+    }
+  }, [frameMapLayout])
 
   // Ensure frames are always initialized - safety fallback
   useEffect(() => {
@@ -553,6 +569,23 @@ const EditorPage = () => {
       }
     }
   }, [templateId, templateLoaded, isUserFilesLoaded, getProject, loadTemplate, downloadTemplate, apiTemplates, toast, setProjectTitle])
+
+  useEffect(() => {
+    if (templateId !== 'new') return
+    const payload = sessionStorage.getItem(NEW_PROJECT_BG_KEY)
+    if (!payload) return
+
+    try {
+      const parsed = JSON.parse(payload)
+      if (parsed && Object.prototype.hasOwnProperty.call(parsed, 'background')) {
+        setEditorBackground(parsed.background)
+      }
+    } catch (_e) {
+      // no-op
+    } finally {
+      sessionStorage.removeItem(NEW_PROJECT_BG_KEY)
+    }
+  }, [templateId, setEditorBackground])
 
   // Keyboard shortcuts - PowerPoint-like
   useEffect(() => {
@@ -3101,10 +3134,8 @@ const EditorPage = () => {
           className={`flex-1 flex flex-col canvas-area relative ${isDragOver ? 'bg-primary/10' : ''} ${isPanning ? (isDraggingPan ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
           style={{
             backgroundColor: '#f5f5f2',
-            backgroundImage: editorBgImage ? `linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.4)), url("${editorBgImage}")` : 'radial-gradient(circle, #c8c8c4 1px, transparent 1px)',
-            backgroundSize: editorBgImage ? 'cover' : '28px 28px',
-            backgroundPosition: 'center',
-              backgroundAttachment: 'fixed',
+            backgroundImage: 'radial-gradient(circle, #c8c8c4 1px, transparent 1px)',
+            backgroundSize: '28px 28px',
             minHeight: 0,
             overflow: 'hidden',
             transition: 'all 0.2s ease',
@@ -3141,6 +3172,22 @@ const EditorPage = () => {
                 willChange: 'transform',
               }}
             >
+              {frameBackgroundBounds && editorBgImage && (
+                <div
+                  className="absolute rounded-2xl"
+                  style={{
+                    left: frameBackgroundBounds.x,
+                    top: frameBackgroundBounds.y,
+                    width: frameBackgroundBounds.width,
+                    height: frameBackgroundBounds.height,
+                    backgroundImage: `linear-gradient(rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.45)), url("${editorBgImage}")`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
               {frameMapLayout.map((frameBox, frameIdx) => {
                 const selected = frameBox.id === activeFrameId
                 const frameData = frames.find(f => f.id === frameBox.id)
