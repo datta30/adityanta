@@ -3101,10 +3101,6 @@ const EditorPage = () => {
           className={`flex-1 flex flex-col canvas-area relative ${isDragOver ? 'bg-primary/10' : ''} ${isPanning ? (isDraggingPan ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
           style={{
             backgroundColor: '#f5f5f2',
-            backgroundImage: editorBgImage ? `linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.4)), url("${editorBgImage}")` : 'radial-gradient(circle, #c8c8c4 1px, transparent 1px)',
-            backgroundSize: editorBgImage ? 'cover' : '28px 28px',
-            backgroundPosition: 'center',
-              backgroundAttachment: 'fixed',
             minHeight: 0,
             overflow: 'hidden',
             transition: 'all 0.2s ease',
@@ -3129,7 +3125,14 @@ const EditorPage = () => {
             </div>
           )}
           {/* Infinite canvas viewport */}
-          <div className="flex-1 min-h-0 relative overflow-hidden">
+          <div
+            className="flex-1 min-h-0 relative overflow-hidden m-3 rounded-2xl"
+            style={{
+              backgroundImage: editorBgImage ? `linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.4)), url("${editorBgImage}")` : 'radial-gradient(circle, #c8c8c4 1px, transparent 1px)',
+              backgroundSize: editorBgImage ? 'cover' : '28px 28px',
+              backgroundPosition: 'center',
+            }}
+          >
             <div
               className="absolute left-0 top-0"
               style={{
@@ -3797,5 +3800,4 @@ const EditorPage = () => {
 }
 
 export default EditorPage
-
 
