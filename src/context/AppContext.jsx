@@ -118,12 +118,17 @@ export const AppProvider = ({ children }) => {
   const normalizeTemplate = useCallback((template, index) => {
     // Normalize frames count safely
     const count = parseInt(template.frames, 10)
-    const normalizedFrames = isNaN(count) || count < 1 ? 1 : Math.min(count, 500)
+    const normalizedFrames = isNaN(count)
+      ? 5
+      : Math.max(4, Math.min(count, 5))
     const rawPreview = `${template.preview || ''}`.trim()
     const isUrlLikePreview = /^(https?:\/\/|www\.)/i.test(rawPreview)
     const normalizedPreview = (!rawPreview || isUrlLikePreview)
       ? (template.title?.split(' ').slice(0, 2).join(' ').toUpperCase() || 'TEMPLATE')
       : rawPreview
+    const normalizedPreviewImage = rawPreview
+      ? (/^www\./i.test(rawPreview) ? `https://${rawPreview}` : rawPreview.replace(/^http:\/\//i, 'https://'))
+      : ''
 
     return {
       ...template,
@@ -136,6 +141,7 @@ export const AppProvider = ({ children }) => {
       license: template.license || 'FREE',
       gradient: template.gradient || defaultGradients[index % defaultGradients.length],
       preview: normalizedPreview,
+      thumbnail_url: template.thumbnail_url || template.thumbnailUrl || (isUrlLikePreview ? normalizedPreviewImage : null),
       description: template.description || `A beautiful ${template.topic || 'educational'} template with slides.`,
       is_favourite: template.is_favourite || template.isFavourite || false,
       s3_file_url: template.s3_file_url || template.s3FileUrl || null,

@@ -57,6 +57,33 @@ const normalizeSortLabel = (value) => {
 
 const isUrlLike = (value) => typeof value === 'string' && /^(https?:\/\/|www\.)/i.test(value.trim())
 
+const normalizeTemplateImageUrl = (value) => {
+  const raw = `${value || ''}`.trim()
+  if (!raw) return ''
+  if (/^www\./i.test(raw)) return `https://${raw}`
+  if (/^http:\/\//i.test(raw)) return raw.replace(/^http:\/\//i, 'https://')
+  return raw
+}
+
+const getTemplatePreviewImage = (template) => {
+  const fromThumbnail = normalizeTemplateImageUrl(template?.thumbnail_url)
+  if (fromThumbnail && !/googleusercontent\.com\/image_collection\/image_retrieval\//i.test(fromThumbnail)) return fromThumbnail
+  const fromPreview = normalizeTemplateImageUrl(template?.preview)
+  if (!isUrlLike(fromPreview)) return ''
+  if (/googleusercontent\.com\/image_collection\/image_retrieval\//i.test(fromPreview)) return ''
+  return fromPreview
+}
+
+const getTemplateFallbackBackground = (template) => {
+  const normalizedTopic = normalizeTopicForBackground(template?.topic)
+  const options = backgroundData?.[normalizedTopic] || backgroundData?.Generic || []
+  if (!Array.isArray(options) || options.length === 0) return ''
+
+  const seed = `${template?.template_id || template?.id || template?.title || ''}`
+  const hash = [...seed].reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+  return options[hash % options.length]
+}
+
 const getTemplatePreviewLabel = (template) => {
   const preview = `${template?.preview || ''}`.trim()
   if (!preview || isUrlLike(preview)) {
@@ -77,7 +104,16 @@ const shouldHideTemplate = (template) => {
   const isPlaceholderTitle = title === 'ppt template'
   const isPlaceholderPreview = /^tpl\d{6,}/.test(preview)
 
-  return hasTimestampLikeId || isPlaceholderTitle || isPlaceholderPreview
+  // Legacy/invalid templates explicitly removed by product request
+  const isBlockedLegacyTitle = [
+    'adda',
+    'test2',
+    'test3',
+    'photo album',
+    'world war i and interwar period - history - 10th grade by slidesgo',
+  ].some((blocked) => title === blocked)
+
+  return hasTimestampLikeId || isPlaceholderTitle || isPlaceholderPreview || isBlockedLegacyTitle
 }
 
 const HomePage = () => {
@@ -107,20 +143,11 @@ const HomePage = () => {
   const [showNewBgModal, setShowNewBgModal] = useState(false)
   const [newBgSearch, setNewBgSearch] = useState('')
 
-  // Only use API templates - no demo data
-  const preziDemoTemplate = {
-    id: 'prezi-demo',
-    template_id: 'prezi-demo',
-    title: 'Prezi Drag & Drop Demo',
-    description: 'A specialized template with freely positional slides mimicking Prezi behavior.',
-    topic: 'Generic',
-    preview: 'Prezi Demo',
-    license: 'FREE',
-    gradient: 'from-indigo-600 to-purple-800',
-    frames: 6,
-    downloads: 9999
-  }
-const templates = [preziDemoTemplate, ...apiTemplates.filter((t) => !shouldHideTemplate(t)), ...mockTemplates]
+  const templates = useMemo(() => {
+    const filteredApiTemplates = (apiTemplates || []).filter((t) => !shouldHideTemplate(t))
+    if (filteredApiTemplates.length > 0) return filteredApiTemplates
+    return (mockTemplates || []).filter((t) => !shouldHideTemplate(t))
+  }, [apiTemplates])
 
   const availableBackgrounds = useMemo(() => {
     const entries = Object.entries(backgroundData || {})
@@ -449,7 +476,7 @@ const templates = [preziDemoTemplate, ...apiTemplates.filter((t) => !shouldHideT
     return result
   }, [searchQuery, selectedTopic, selectedLicense, selectedSort, templates])
 
-  const favoriteTemplates = useMemo(() => favorites, [favorites])
+  const favoriteTemplates = useMemo(() => favorites.filter((t) => !shouldHideTemplate(t)), [favorites])
 
   // Check if template is in favorites (handles both id formats)
   const isTemplateFavorite = useCallback((template) => {
@@ -656,6 +683,9 @@ const templates = [preziDemoTemplate, ...apiTemplates.filter((t) => !shouldHideT
 
   const TemplateCard = ({ template, showFavoriteButton = false }) => {
     const isFav = isTemplateFavorite(template)
+    const previewImage = getTemplatePreviewImage(template)
+    const fallbackImage = getTemplateFallbackBackground(template)
+    const resolvedImage = previewImage || fallbackImage
     return (
       <div
         onClick={() => handleTemplateClick(template)}
@@ -663,14 +693,18 @@ const templates = [preziDemoTemplate, ...apiTemplates.filter((t) => !shouldHideT
       >
         <div className={`h-44 bg-gradient-to-br ${template.gradient} relative flex items-center justify-center overflow-hidden`}>
           {/* Thumbnail Image (if available from API) */}
-          {template.thumbnail_url ? (
+          {resolvedImage ? (
             <>
               <img
-                src={template.thumbnail_url}
+                src={resolvedImage}
                 alt={template.title}
                 className="absolute inset-0 w-full h-full object-cover"
                 onError={(e) => {
-                  e.target.style.display = 'none'
+                  if (fallbackImage && e.currentTarget.src !== new URL(fallbackImage, window.location.origin).href) {
+                    e.currentTarget.src = fallbackImage
+                    return
+                  }
+                  e.currentTarget.style.display = 'none'
                 }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
@@ -953,18 +987,40 @@ const templates = [preziDemoTemplate, ...apiTemplates.filter((t) => !shouldHideT
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Recently Viewed</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                       {recentTemplates.map(t => (
+                        (() => {
+                          const previewImage = getTemplatePreviewImage(t)
+                          const fallbackImage = getTemplateFallbackBackground(t)
+                          const resolvedImage = previewImage || fallbackImage
+                          return (
                         <button
                           key={t.template_id || t.id}
                           onClick={() => handleTemplateClick(t)}
                           className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all text-left border border-gray-100 group"
                         >
-                          <div className={`h-20 bg-gradient-to-br ${t.gradient || 'from-blue-400 to-purple-600'} flex items-center justify-center`}>
-                            <span className="text-xs font-bold text-white drop-shadow-sm opacity-80 group-hover:opacity-100 transition-opacity">{t.preview || t.title?.slice(0, 8)}</span>
+                          <div className={`h-20 bg-gradient-to-br ${t.gradient || 'from-blue-400 to-purple-600'} relative flex items-center justify-center overflow-hidden`}>
+                            {resolvedImage ? (
+                              <img
+                                src={resolvedImage}
+                                alt={t.title}
+                                className="absolute inset-0 w-full h-full object-cover"
+                                onError={(e) => {
+                                  if (fallbackImage && e.currentTarget.src !== new URL(fallbackImage, window.location.origin).href) {
+                                    e.currentTarget.src = fallbackImage
+                                    return
+                                  }
+                                  e.currentTarget.style.display = 'none'
+                                }}
+                              />
+                            ) : (
+                              <span className="text-xs font-bold text-white drop-shadow-sm opacity-80 group-hover:opacity-100 transition-opacity">{t.preview || t.title?.slice(0, 8)}</span>
+                            )}
                           </div>
                           <div className="px-2 py-1.5">
                             <p className="text-xs font-medium text-gray-800 truncate">{t.title}</p>
                           </div>
                         </button>
+                          )
+                        })()
                       ))}
                     </div>
                   </div>
@@ -1289,10 +1345,30 @@ const templates = [preziDemoTemplate, ...apiTemplates.filter((t) => !shouldHideT
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {favoriteTemplates.map((template) => (
+                      (() => {
+                        const previewImage = getTemplatePreviewImage(template)
+                        const fallbackImage = getTemplateFallbackBackground(template)
+                        const resolvedImage = previewImage || fallbackImage
+                        return (
                       <div key={template.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer group border border-gray-100">
                         <div onClick={() => handleTemplateClick(template)} className={`h-44 bg-gradient-to-br ${template.gradient} relative flex items-center justify-center overflow-hidden`}>
-                          <div className={`absolute top-3 right-3 px-2.5 py-1 rounded-md text-xs font-semibold ${template.license === 'FREE' ? 'bg-white/95 text-primary' : 'bg-orange-500 text-white'}`}>{getLicenseDisplay(template.license)}</div>
-                          <div className="text-center z-10 px-4"><h3 className="text-2xl font-black text-white drop-shadow-lg">{getTemplatePreviewLabel(template)}</h3></div>
+                          <div className={`absolute top-3 right-3 px-2.5 py-1 rounded-md text-xs font-semibold z-10 ${template.license === 'FREE' ? 'bg-white/95 text-primary' : 'bg-orange-500 text-white'}`}>{getLicenseDisplay(template.license)}</div>
+                          {resolvedImage ? (
+                            <img
+                              src={resolvedImage}
+                              alt={template.title}
+                              className="absolute inset-0 w-full h-full object-cover"
+                              onError={(e) => {
+                                if (fallbackImage && e.currentTarget.src !== new URL(fallbackImage, window.location.origin).href) {
+                                  e.currentTarget.src = fallbackImage
+                                  return
+                                }
+                                e.currentTarget.style.display = 'none'
+                              }}
+                            />
+                          ) : (
+                            <div className="text-center z-10 px-4"><h3 className="text-2xl font-black text-white drop-shadow-lg">{getTemplatePreviewLabel(template)}</h3></div>
+                          )}
                         </div>
                         <div className="p-4"><h4 className="font-semibold text-gray-900 mb-2">{template.title}</h4>
                           <div className="flex items-center justify-between"><div className="flex items-center gap-3 text-xs text-gray-500"><span>{template.topic}</span><span className="w-1 h-1 rounded-full bg-gray-300" /><span>{template.frames} frames</span></div>
@@ -1300,6 +1376,8 @@ const templates = [preziDemoTemplate, ...apiTemplates.filter((t) => !shouldHideT
                           </div>
                         </div>
                       </div>
+                        )
+                      })()
                     ))}
                   </div>
                 )}

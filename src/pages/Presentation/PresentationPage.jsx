@@ -3,6 +3,66 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useEditor } from '../../context/EditorContext'
 
 const WORLD_PADDING = 220
+const PREZI_LAYOUT_PRESETS = [
+  { x: 820, y: 220, width: 1280, height: 720 },
+  { x: 60, y: 120, width: 640, height: 360 },
+  { x: 60, y: 580, width: 640, height: 360 },
+  { x: 2260, y: 300, width: 640, height: 360 },
+  { x: 2260, y: 790, width: 640, height: 360 },
+]
+const PREZI_FLOW_ORDER = [1, 2, 0, 3, 4]
+
+const buildInterFrameConnectors = (layout) => {
+  if (!Array.isArray(layout) || layout.length < 2) return []
+  const order = (layout.length >= 5
+    ? PREZI_FLOW_ORDER.filter((idx) => idx < layout.length)
+    : layout.map((_, idx) => idx))
+
+  const connectors = []
+  for (let i = 0; i < order.length - 1; i += 1) {
+    const from = layout[order[i]]
+    const to = layout[order[i + 1]]
+    if (!from || !to) continue
+
+    const fromCx = from.x + (from.width / 2)
+    const fromCy = from.y + (from.height / 2)
+    const toCx = to.x + (to.width / 2)
+    const toCy = to.y + (to.height / 2)
+
+    const dx = toCx - fromCx
+    const dy = toCy - fromCy
+    const distance = Math.max(1, Math.hypot(dx, dy))
+    const ux = dx / distance
+    const uy = dy / distance
+
+    const fromExtent = ((from.width / 2) * Math.abs(ux)) + ((from.height / 2) * Math.abs(uy))
+    const toExtent = ((to.width / 2) * Math.abs(ux)) + ((to.height / 2) * Math.abs(uy))
+    const margin = 34
+
+    const startX = fromCx + (ux * (fromExtent + margin))
+    const startY = fromCy + (uy * (fromExtent + margin))
+    const endX = toCx - (ux * (toExtent + margin))
+    const endY = toCy - (uy * (toExtent + margin))
+
+    const arrowX = (startX + endX) / 2
+    const arrowY = (startY + endY) / 2
+
+    const horizontal = Math.abs(dx) >= Math.abs(dy)
+    const symbol = horizontal
+      ? (dx >= 0 ? '»»' : '««')
+      : (dy >= 0 ? '⌄⌄' : '⌃⌃')
+
+    connectors.push({
+      id: `${from.id}-${to.id}`,
+      x: arrowX,
+      y: arrowY,
+      symbol,
+      horizontal,
+    })
+  }
+
+  return connectors
+}
 
 const PresentationPage = () => {
   const navigate = useNavigate()
@@ -18,20 +78,20 @@ const PresentationPage = () => {
 
   const getAnimationClass = (animation) => {
     switch (animation) {
-      case 'fade': return 'animate-fade-in'
-      case 'slide-up': return 'animate-slide-up-content'
-      case 'slide-right': return 'animate-slide-right-content'
-      case 'zoom': return 'animate-zoom-in'
-      case 'bounce': return 'animate-bounce-in'
+      case 'fade': return 'anim-fadeIn'
+      case 'slide-up': return 'anim-slideInUp'
+      case 'slide-right': return 'anim-slideInRight'
+      case 'zoom': return 'anim-zoomIn'
+      case 'bounce': return 'anim-bounceIn'
       default: return ''
     }
   }
 
-  const renderElement = (element, slideKey) => {
+  const renderElement = (element, slideKey, elementIndex = 0) => {
     const animClass = getAnimationClass(element.animation)
     const animStyle = element.animation && element.animation !== 'none' ? {
-      '--anim-duration': `${element.animationSpeed || 500}ms`,
-      '--anim-delay': `${(element.animationDelay || 0) + (index * 100)}ms`, // Stagger animations
+      '--anim-duration': `${Math.round((element.animationSpeed || 500) * 1.35)}ms`,
+      '--anim-delay': `${(element.animationDelay || 0) + (elementIndex * 140)}ms`,
     } : {}
 
     const baseStyle = {
@@ -331,13 +391,7 @@ const PresentationPage = () => {
   }
 
     const frameMapLayout = useMemo(() => {
-    const presets = [
-      { x: 0, y: 0, width: 1280, height: 720 },
-      { x: 1400, y: -100, width: 640, height: 360 },
-      { x: 1400, y: 300, width: 640, height: 360 },
-      { x: 2100, y: 100, width: 640, height: 360 },
-      { x: -700, y: 300, width: 640, height: 360 },
-    ]
+    const presets = PREZI_LAYOUT_PRESETS
 
     let rightMost = 0
     return frames.map((frame, index) => {
@@ -374,6 +428,8 @@ const PresentationPage = () => {
         height: Math.max(1100, maxY + WORLD_PADDING),
       }
     }, [frameMapLayout])
+
+    const interFrameConnectors = useMemo(() => buildInterFrameConnectors(frameMapLayout), [frameMapLayout])
 
     const updateCameraToBox = useCallback((box, zoomScale = 0.8) => {
     if (!window.innerWidth || !box) return
@@ -500,10 +556,32 @@ const PresentationPage = () => {
           height: `${worldBounds.height}px`,
           transform: `scale(${camera.zoom}) translate(${camera.panX}px, ${camera.panY}px)`,
           transformOrigin: 'center center',
-          transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
+          transition: 'transform 1.15s cubic-bezier(0.22, 1, 0.36, 1)',
           willChange: 'transform',
         }}
       >
+        {interFrameConnectors.map((connector) => (
+          <div
+            key={connector.id}
+            className="absolute select-none"
+            style={{
+              left: connector.x,
+              top: connector.y,
+              transform: 'translate(-50%, -50%)',
+              fontSize: connector.horizontal ? '72px' : '70px',
+              fontWeight: 800,
+              lineHeight: 1,
+              color: '#4b5563',
+              opacity: 0.92,
+              letterSpacing: '0.02em',
+              textShadow: '0 2px 8px rgba(255,255,255,0.55)',
+              pointerEvents: 'none',
+              zIndex: 1,
+            }}
+          >
+            {connector.symbol}
+          </div>
+        ))}
         {frameMapLayout.map((frameBox, frameIdx) => {
           const frameData = frames.find(f => f.id === frameBox.id) || frames[frameIdx];
           const isActive = currentSlideIndex === frameIdx;
@@ -522,7 +600,7 @@ const PresentationPage = () => {
                     ? frameData.backgroundColor
                     : (frameData?.bg && frameData.bg !== 'transparent' ? frameData.bg : '#ffffff')),
                 borderRadius: '8px',
-                transition: 'opacity 0.4s ease, transform 0.4s ease',
+                transition: 'opacity 0.65s ease, transform 0.65s ease',
               }}
               onClick={(e) => {
                   e.stopPropagation()
@@ -536,9 +614,9 @@ const PresentationPage = () => {
                   transformOrigin: 'top left' 
                 }}
               >
-                {frameData?.elements?.map(el => {
+                {frameData?.elements?.map((el, elementIndex) => {
                     const slideKey = isActive ? currentSlideIndex : frameBox.id;
-                    return renderElement(el, slideKey)
+                    return renderElement(el, slideKey, elementIndex)
                 })}
               </div>
             </div>

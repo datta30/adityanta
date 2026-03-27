@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useEditor, ANIMATION_PRESETS, SLIDE_TRANSITIONS } from '../../context/EditorContext'
 import { useApp } from '../../context/AppContext'
 import { useToast } from '../../context/ToastContext'
+import { useAuth } from '../../context/AuthContext'
 import { parsePPTX } from '../../utils/pptxImport'
 import logger from '../../utils/logger'
 import EditorToolbar from '../../components/Toolbar/EditorToolbar'
@@ -20,6 +21,66 @@ const SLIDE_HEIGHT = 720
 const WORLD_PADDING = 220
 const templateRuntimeCache = new Map()
 const NEW_PROJECT_BG_KEY = 'adityanta_new_project_bg'
+const PREZI_LAYOUT_PRESETS = [
+  { x: 820, y: 220, width: 1280, height: 720 },
+  { x: 60, y: 120, width: 640, height: 360 },
+  { x: 60, y: 580, width: 640, height: 360 },
+  { x: 2260, y: 300, width: 640, height: 360 },
+  { x: 2260, y: 790, width: 640, height: 360 },
+]
+const PREZI_FLOW_ORDER = [1, 2, 0, 3, 4]
+
+const buildInterFrameConnectors = (layout) => {
+  if (!Array.isArray(layout) || layout.length < 2) return []
+  const order = (layout.length >= 5
+    ? PREZI_FLOW_ORDER.filter((idx) => idx < layout.length)
+    : layout.map((_, idx) => idx))
+
+  const connectors = []
+  for (let i = 0; i < order.length - 1; i += 1) {
+    const from = layout[order[i]]
+    const to = layout[order[i + 1]]
+    if (!from || !to) continue
+
+    const fromCx = from.x + (from.width / 2)
+    const fromCy = from.y + (from.height / 2)
+    const toCx = to.x + (to.width / 2)
+    const toCy = to.y + (to.height / 2)
+
+    const dx = toCx - fromCx
+    const dy = toCy - fromCy
+    const distance = Math.max(1, Math.hypot(dx, dy))
+    const ux = dx / distance
+    const uy = dy / distance
+
+    const fromExtent = ((from.width / 2) * Math.abs(ux)) + ((from.height / 2) * Math.abs(uy))
+    const toExtent = ((to.width / 2) * Math.abs(ux)) + ((to.height / 2) * Math.abs(uy))
+    const margin = 34
+
+    const startX = fromCx + (ux * (fromExtent + margin))
+    const startY = fromCy + (uy * (fromExtent + margin))
+    const endX = toCx - (ux * (toExtent + margin))
+    const endY = toCy - (uy * (toExtent + margin))
+
+    const arrowX = (startX + endX) / 2
+    const arrowY = (startY + endY) / 2
+
+    const horizontal = Math.abs(dx) >= Math.abs(dy)
+    const symbol = horizontal
+      ? (dx >= 0 ? '»»' : '««')
+      : (dy >= 0 ? '⌄⌄' : '⌃⌃')
+
+    connectors.push({
+      id: `${from.id}-${to.id}`,
+      x: arrowX,
+      y: arrowY,
+      symbol,
+      horizontal,
+    })
+  }
+
+  return connectors
+}
 
 const normalizeTopicForBackground = (topic) => {
   const value = `${topic || ''}`.trim().toLowerCase()
@@ -38,11 +99,273 @@ const normalizeTopicForBackground = (topic) => {
   return topicMap[value] || topic || 'Generic'
 }
 
+const TOPIC_PROFILES = {
+  Science: {
+    lens: 'scientific thinking',
+    foundation: ['Define the core question', 'Form a clear hypothesis', 'Choose measurable variables'],
+    methods: ['Use controlled experiments', 'Collect repeatable observations', 'Validate findings with evidence'],
+    evidence: ['Lab result snapshots', 'Trend patterns over time', 'Interpretation with limitations'],
+    action: ['Summarize findings', 'Recommend next experiments', 'Share conclusions clearly'],
+  },
+  Finance: {
+    lens: 'financial decision-making',
+    foundation: ['Set financial objective', 'Assess risk tolerance', 'Define key constraints'],
+    methods: ['Compare cost-benefit options', 'Track performance indicators', 'Review cash-flow impact'],
+    evidence: ['Revenue and margin trends', 'Scenario comparison outcomes', 'Risk-adjusted return insights'],
+    action: ['Prioritize high-impact moves', 'Set monitoring cadence', 'Align stakeholders on targets'],
+  },
+  History: {
+    lens: 'historical perspective',
+    foundation: ['Set historical context', 'Identify key actors', 'Map timeline milestones'],
+    methods: ['Analyze primary sources', 'Compare interpretations', 'Connect causes and consequences'],
+    evidence: ['Source excerpts', 'Timeline inflection points', 'Contrasting viewpoints'],
+    action: ['Synthesize key lessons', 'Relate to present day', 'Frame discussion questions'],
+  },
+  'Technology & Computer Subjects': {
+    lens: 'technology implementation',
+    foundation: ['Define user problem', 'Select practical architecture', 'Set success metrics'],
+    methods: ['Prototype and test quickly', 'Measure performance and reliability', 'Iterate from user feedback'],
+    evidence: ['Before/after benchmarks', 'Adoption and usage insights', 'Scalability observations'],
+    action: ['Ship phased rollout plan', 'Mitigate technical risks', 'Track outcome metrics'],
+  },
+  Generic: {
+    lens: 'structured storytelling',
+    foundation: ['Clarify presentation objective', 'Define audience expectations', 'Outline key talking points'],
+    methods: ['Use concise message blocks', 'Support with simple visuals', 'Sequence ideas logically'],
+    evidence: ['Key observations', 'Examples or mini case', 'Measured outcomes'],
+    action: ['Recap core message', 'Highlight next steps', 'Close with clear call-to-action'],
+  },
+}
+
+const getTopicProfile = (topic) => {
+  const normalized = normalizeTopicForBackground(topic)
+  return TOPIC_PROFILES[normalized] || TOPIC_PROFILES.Generic
+}
+
+const buildPolishedTemplateFrames = (title, topic) => {
+  const topicName = normalizeTopicForBackground(topic || 'Generic')
+  const profile = getTopicProfile(topicName)
+  const cleanTitle = `${title || ''}`.trim() || `${topicName} Presentation`
+  const icons = ['lightning', 'check', 'star', 'thumbsUp', 'heart']
+
+  const slides = [
+    {
+      title: cleanTitle,
+      subtitle: `A focused roadmap for ${topicName.toLowerCase()} using ${profile.lens}.`,
+      bullets: profile.foundation,
+      badge: 'Overview',
+      visual: 'Core idea snapshot',
+    },
+    {
+      title: `${topicName}: Foundation`,
+      subtitle: 'Build the base before moving into deeper analysis.',
+      bullets: profile.foundation,
+      badge: 'Foundation',
+      visual: 'Key concepts map',
+    },
+    {
+      title: `${topicName}: Method`,
+      subtitle: 'How the work is done step by step with consistency.',
+      bullets: profile.methods,
+      badge: 'Method',
+      visual: 'Process flow preview',
+    },
+    {
+      title: `${topicName}: Evidence`,
+      subtitle: 'What the data, examples, or outcomes are showing.',
+      bullets: profile.evidence,
+      badge: 'Evidence',
+      visual: 'Insight board',
+    },
+    {
+      title: `${topicName}: Conclusion & Next Steps`,
+      subtitle: 'Convert insights into a practical action plan.',
+      bullets: profile.action,
+      badge: 'Action',
+      visual: 'Execution checklist',
+    },
+  ]
+
+  return slides.map((slide, index) => {
+    const baseId = (index + 1) * 1000
+    const bulletText = `• ${slide.bullets.join('\n• ')}`
+
+    return {
+      id: index + 1,
+      title: slide.title,
+      preview: slide.title,
+      backgroundColor: '#ffffff',
+      backgroundImage: null,
+      layout: PREZI_LAYOUT_PRESETS[index] ? { ...PREZI_LAYOUT_PRESETS[index] } : undefined,
+      notes: '',
+      transition: 'fade',
+      elements: [
+        {
+          id: baseId + 1,
+          type: 'shape',
+          shapeType: 'rectangle',
+          x: 64,
+          y: 56,
+          width: 170,
+          height: 44,
+          fill: '#111827',
+          strokeColor: '#111827',
+          strokeWidth: 0,
+          rotation: 0,
+          opacity: 100,
+        },
+        {
+          id: baseId + 2,
+          type: 'text',
+          content: slide.badge,
+          x: 64,
+          y: 56,
+          width: 170,
+          height: 44,
+          fontSize: 18,
+          fontWeight: 'bold',
+          fontFamily: 'Inter',
+          fontStyle: 'normal',
+          textDecoration: 'none',
+          textAlign: 'center',
+          color: '#ffffff',
+          borderWidth: 0,
+          borderColor: '#111827',
+          borderRadius: 0,
+          backgroundColor: 'transparent',
+          isPlaceholder: false,
+        },
+        {
+          id: baseId + 3,
+          type: 'text',
+          content: slide.title,
+          x: 64,
+          y: 128,
+          width: 760,
+          height: 82,
+          fontSize: 54,
+          fontWeight: 'bold',
+          fontFamily: 'Inter',
+          fontStyle: 'normal',
+          textDecoration: 'none',
+          textAlign: 'left',
+          color: '#111827',
+          borderWidth: 0,
+          borderColor: '#111827',
+          borderRadius: 0,
+          backgroundColor: 'transparent',
+          isPlaceholder: false,
+        },
+        {
+          id: baseId + 4,
+          type: 'text',
+          content: slide.subtitle,
+          x: 64,
+          y: 220,
+          width: 760,
+          height: 62,
+          fontSize: 25,
+          fontWeight: 'normal',
+          fontFamily: 'Inter',
+          fontStyle: 'normal',
+          textDecoration: 'none',
+          textAlign: 'left',
+          color: '#374151',
+          borderWidth: 0,
+          borderColor: '#374151',
+          borderRadius: 0,
+          backgroundColor: 'transparent',
+          isPlaceholder: false,
+        },
+        {
+          id: baseId + 5,
+          type: 'text',
+          content: bulletText,
+          x: 76,
+          y: 318,
+          width: 700,
+          height: 280,
+          fontSize: 26,
+          fontWeight: 'normal',
+          fontFamily: 'Inter',
+          fontStyle: 'normal',
+          textDecoration: 'none',
+          textAlign: 'left',
+          color: '#111827',
+          borderWidth: 0,
+          borderColor: '#111827',
+          borderRadius: 0,
+          backgroundColor: 'transparent',
+          isPlaceholder: false,
+        },
+        {
+          id: baseId + 6,
+          type: 'shape',
+          shapeType: 'rectangle',
+          x: 860,
+          y: 140,
+          width: 360,
+          height: 450,
+          fill: '#f3f4f6',
+          strokeColor: '#d1d5db',
+          strokeWidth: 2,
+          rotation: 0,
+          opacity: 100,
+        },
+        {
+          id: baseId + 7,
+          type: 'icon',
+          iconType: icons[index] || 'check',
+          x: 988,
+          y: 250,
+          width: 104,
+          height: 104,
+          color: '#111827',
+          rotation: 0,
+        },
+        {
+          id: baseId + 8,
+          type: 'text',
+          content: slide.visual,
+          x: 888,
+          y: 376,
+          width: 300,
+          height: 58,
+          fontSize: 24,
+          fontWeight: '600',
+          fontFamily: 'Inter',
+          fontStyle: 'normal',
+          textDecoration: 'none',
+          textAlign: 'center',
+          color: '#4b5563',
+          borderWidth: 0,
+          borderColor: '#4b5563',
+          borderRadius: 0,
+          backgroundColor: 'transparent',
+          isPlaceholder: false,
+        },
+      ],
+    }
+  })
+}
+
 const EditorPage = () => {
   const navigate = useNavigate()
   const { templateId } = useParams()
   const canvasRef = useRef(null)
   const toast = useToast()
+  const { user } = useAuth()
+  const [isBookmarked, setIsBookmarked] = useState(false)
+
+  const getDisplayUserName = (value) => {
+    const resolved = [value?.name, value?.displayName, value?.username, value?.full_name, value?.fullName].find((v) => typeof v === 'string' && v.trim())
+    if (resolved) return resolved.trim()
+    const email = `${value?.email || ''}`.trim()
+    if (email.includes('@')) return email.split('@')[0]
+    return 'Guest User'
+  }
+  const userName = getDisplayUserName(user)
+  const userInitials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'GU'
 
   // Get editor context
   const {
@@ -214,13 +537,7 @@ const EditorPage = () => {
   const [frameDragStart, setFrameDragStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0 })
 
   const frameMapLayout = useMemo(() => {
-    const presets = [
-      { x: 0, y: 0, width: 1280, height: 720 },
-      { x: 1400, y: -100, width: 640, height: 360 },
-      { x: 1400, y: 300, width: 640, height: 360 },
-      { x: 2100, y: 100, width: 640, height: 360 },
-      { x: -700, y: 300, width: 640, height: 360 },
-    ]
+    const presets = PREZI_LAYOUT_PRESETS
 
     let rightMost = 0
     return frames.map((frame, index) => {
@@ -240,6 +557,8 @@ const EditorPage = () => {
       }
     })
   }, [frames])
+
+  const interFrameConnectors = useMemo(() => buildInterFrameConnectors(frameMapLayout), [frameMapLayout])
 
   const worldBounds = useMemo(() => {
     if (!frameMapLayout.length) {
@@ -377,8 +696,9 @@ const EditorPage = () => {
     if (!templateId || templateId === 'new') return
 
     if (templateId === 'prezi-demo') {
-      import('../../utils/templateData').then(({ PREZI_DEMO_FRAMES }) => {
-        loadTemplate({ title: 'Prezi Drag & Drop Demo', frames: PREZI_DEMO_FRAMES })
+      import('../../utils/templateData').then(() => {
+        const polishedFrames = buildPolishedTemplateFrames('Prezi Drag & Drop Demo', 'Generic')
+        loadTemplate({ title: 'Prezi Drag & Drop Demo', frames: polishedFrames })
         setProjectTitle('Prezi Drag & Drop Demo')
         setTemplateLoaded(true)
         setIsTemplateLoading(false)
@@ -481,6 +801,7 @@ const EditorPage = () => {
             return {
               title: result.template?.title || parsed.title || 'Presentation',
               frames: parsed.frames,
+              topic: result.template?.topic || null,
               gradient: null,
               thumbnailUrl: result.template?.thumbnail_url || null
             }
@@ -502,9 +823,13 @@ const EditorPage = () => {
 
       if (templateData) {
         // Successfully loaded template from backend
-        console.log('[TEMPLATE] SUCCESS - Loading', templateData.frames.length, 'slides')
-        templateRuntimeCache.set(templateId, templateData)
-        loadTemplate({ title: templateData.title, frames: templateData.frames })
+        const polishedFrames = buildPolishedTemplateFrames(
+          templateData.title,
+          templateData.topic || projectTopic || 'Generic'
+        )
+        console.log('[TEMPLATE] SUCCESS - Loading polished deck:', polishedFrames.length, 'slides')
+        templateRuntimeCache.set(templateId, { ...templateData, frames: polishedFrames })
+        loadTemplate({ title: templateData.title, frames: polishedFrames })
         setProjectTitle(templateData.title)
         setTemplateGradient(templateData.gradient)
         setTemplateThumbnailUrl(templateData.thumbnailUrl)
@@ -517,41 +842,8 @@ const EditorPage = () => {
         // Find template title from API templates if available
         const apiTemplate = allTemplates.find(t => t.template_id === templateId)
         const fallbackTitle = apiTemplate?.title || 'Presentation'
-        const slideCount = (typeof apiTemplate?.frames === 'number' && apiTemplate.frames > 0) ? apiTemplate.frames : 3
         const projectTopic = apiTemplate?.topic || 'Generic'
-        const fallbackFrames = Array.from({ length: slideCount }, (_, i) => {
-          return {
-          id: i + 1,
-          title: i === 0 ? fallbackTitle : `Slide ${i + 1}`,
-          preview: i === 0 ? fallbackTitle : `Slide ${i + 1}`,
-          backgroundColor: 'transparent',
-          backgroundImage: null,
-          notes: '',
-          transition: 'fade',
-          elements: [
-            {
-              id: (i + 1) * 1000 + 1,
-              type: 'text',
-              content: i === 0 ? fallbackTitle : 'Click to add title',
-              x: 50, y: 100, width: 700, height: 70,
-              fontSize: 40, fontWeight: 'bold', fontFamily: 'Inter',
-              fontStyle: 'normal', textDecoration: 'none',
-              color: i === 0 ? '#1a1a1a' : '#333333',
-              textAlign: 'center', isPlaceholder: i > 0,
-              borderWidth: 0, borderColor: '#333333', borderRadius: 0, backgroundColor: 'transparent',
-            },
-            {
-              id: (i + 1) * 1000 + 2,
-              type: 'text',
-              content: i === 0 ? 'Click to edit subtitle' : 'Click to add content',
-              x: 50, y: 200, width: 700, height: 300,
-              fontSize: 20, fontWeight: 'normal', fontFamily: 'Inter',
-              fontStyle: 'normal', textDecoration: 'none',
-              color: '#666666', textAlign: 'center', isPlaceholder: true,
-              borderWidth: 0, borderColor: '#333333', borderRadius: 0, backgroundColor: 'transparent',
-            }
-          ]
-        }})
+        const fallbackFrames = buildPolishedTemplateFrames(fallbackTitle, projectTopic)
 
         loadTemplate({ title: fallbackTitle, frames: fallbackFrames })
         setProjectTitle(fallbackTitle)
@@ -568,7 +860,7 @@ const EditorPage = () => {
         inFlightTemplateRef.current = { id: null, promise: null }
       }
     }
-  }, [templateId, templateLoaded, isUserFilesLoaded, getProject, loadTemplate, downloadTemplate, apiTemplates, toast, setProjectTitle])
+  }, [templateId, templateLoaded, isUserFilesLoaded, getProject, loadTemplate, downloadTemplate, apiTemplates, projectTopic, toast, setProjectTitle])
 
   useEffect(() => {
     if (templateId !== 'new') return
@@ -3168,7 +3460,7 @@ const EditorPage = () => {
                 height: `${worldBounds.height}px`,
                 transform: `scale(${camera.zoom}) translate(${camera.panX}px, ${camera.panY}px)`,
                 transformOrigin: 'center center',
-                transition: isNavigating ? 'none' : 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                transition: isNavigating ? 'none' : 'transform 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
                 willChange: 'transform',
               }}
             >
@@ -3188,6 +3480,28 @@ const EditorPage = () => {
                   }}
                 />
               )}
+              {interFrameConnectors.map((connector) => (
+                <div
+                  key={connector.id}
+                  className="absolute select-none"
+                  style={{
+                    left: connector.x,
+                    top: connector.y,
+                    transform: 'translate(-50%, -50%)',
+                    fontSize: connector.horizontal ? '72px' : '70px',
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    color: '#4b5563',
+                    opacity: 0.92,
+                    letterSpacing: '0.02em',
+                    textShadow: '0 2px 8px rgba(255,255,255,0.55)',
+                    pointerEvents: 'none',
+                    zIndex: 1,
+                  }}
+                >
+                  {connector.symbol}
+                </div>
+              ))}
               {frameMapLayout.map((frameBox, frameIdx) => {
                 const selected = frameBox.id === activeFrameId
                 const frameData = frames.find(f => f.id === frameBox.id)

@@ -1,15 +1,27 @@
 import { useNavigate } from 'react-router-dom'
-import { useApp } from '../../context/AppContext'
 import Logo from '../Logo'
 
 const Sidebar = ({ activeTab, setActiveTab, onUpgrade, user }) => {
   const navigate = useNavigate()
-  const { config } = useApp()
+
+  const getDisplayUserName = (value) => {
+    const resolved = [
+      value?.name,
+      value?.displayName,
+      value?.username,
+      value?.full_name,
+      value?.fullName,
+    ].find((v) => typeof v === 'string' && v.trim())
+
+    if (resolved) return resolved.trim()
+    const email = `${value?.email || ''}`.trim()
+    if (email.includes('@')) return email.split('@')[0]
+    return 'Guest User'
+  }
 
   // Get user display info
-  const userName = user?.name || 'Guest User'
+  const userName = getDisplayUserName(user)
   const userInitials = userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-  const remainingDownloads = user?.free_downloads_remaining ?? config?.free_downloads_limit ?? 5
   const isPremium = user?.membership_type === 'PREMIUM' || user?.membership_type === 'premium' || user?.is_member
 
   const navItems = [
@@ -87,8 +99,6 @@ const Sidebar = ({ activeTab, setActiveTab, onUpgrade, user }) => {
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isPremium ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-primary'}`}>
                   {isPremium ? 'Premium' : 'Free'}
                 </span>
-                {!isPremium && <span>Free Downloads Remaining: {remainingDownloads}</span>}
-                {isPremium && <span>Unlimited Downloads</span>}
               </div>
             </div>
           </div>
