@@ -463,9 +463,9 @@ const PresentationPage = () => {
     <div
         className="fixed inset-0 flex items-center justify-center overflow-hidden"
         style={{
-          backgroundColor: '#f5f5f2',
-          backgroundImage: editorBackground ? `linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.4)), url("${editorBackground}")` : 'radial-gradient(circle, #c8c8c4 1px, transparent 1px)',
-          backgroundSize: editorBackground ? 'cover' : '28px 28px',
+          backgroundColor: '#ffffff',
+          backgroundImage: 'none',
+          backgroundSize: 'auto',
           backgroundPosition: 'center',
           backgroundAttachment: 'fixed'
         }}
