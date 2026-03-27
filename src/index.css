@@ -171,44 +171,6 @@ body {
   75% { transform: scaleX(1.05) scaleY(0.95); }
 }
 
-@keyframes preziZoomIn {
-  0% {
-    transform: scale(0.32);
-    opacity: 0;
-    filter: blur(2px);
-  }
-  55% {
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-    filter: blur(0);
-  }
-}
-
-@keyframes cubeInRight {
-  0% {
-    transform: perspective(1400px) rotateY(-26deg) translateX(18%);
-    opacity: 0;
-  }
-  100% {
-    transform: perspective(1400px) rotateY(0deg) translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes cubeInLeft {
-  0% {
-    transform: perspective(1400px) rotateY(26deg) translateX(-18%);
-    opacity: 0;
-  }
-  100% {
-    transform: perspective(1400px) rotateY(0deg) translateX(0);
-    opacity: 1;
-  }
-}
-
 @keyframes animate-slide-in {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }

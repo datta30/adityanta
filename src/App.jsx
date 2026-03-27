@@ -40,7 +40,7 @@ function LoginRoute() {
 const ProfileSetupPage = lazyWithRetry(() => import('./pages/Auth/ProfileSetupPage'))
 const HomePage = lazyWithRetry(() => import('./pages/Home/HomePage'))
 const EditorPage = lazyWithRetry(() => import('./pages/Editor/EditorPage'))
-const PresentationPage = lazyWithRetry(() => import('./pages/Presentation/PresentationPageV2'))
+const PresentationPage = lazyWithRetry(() => import('./pages/Presentation/PresentationPage'))
 const SharePage = lazyWithRetry(() => import('./pages/Share/SharePage'))
 const PaymentSuccess = lazyWithRetry(() => import('./pages/Payment/PaymentSuccess'))
 const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'))
