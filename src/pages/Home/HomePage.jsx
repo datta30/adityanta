@@ -65,6 +65,21 @@ const getTemplatePreviewLabel = (template) => {
   return preview
 }
 
+const shouldHideTemplate = (template) => {
+  const templateId = `${template?.template_id || template?.id || ''}`.trim().toLowerCase()
+  const title = `${template?.title || ''}`.trim().toLowerCase()
+  const preview = `${template?.preview || ''}`.trim().toLowerCase()
+
+  // Auto-generated bulk uploads typically use tpl + long numeric suffix (e.g. tpl177329274...)
+  const hasTimestampLikeId = /^tpl\d{8,}$/.test(templateId)
+
+  // Placeholder template markers used by generated uploads
+  const isPlaceholderTitle = title === 'ppt template'
+  const isPlaceholderPreview = /^tpl\d{6,}/.test(preview)
+
+  return hasTimestampLikeId || isPlaceholderTitle || isPlaceholderPreview
+}
+
 const HomePage = () => {
   const navigate = useNavigate()
   const { user, logout, refreshUser } = useAuth()
@@ -105,7 +120,7 @@ const HomePage = () => {
     frames: 6,
     downloads: 9999
   }
-const templates = [preziDemoTemplate, ...apiTemplates, ...mockTemplates]
+const templates = [preziDemoTemplate, ...apiTemplates.filter((t) => !shouldHideTemplate(t)), ...mockTemplates]
 
   const availableBackgrounds = useMemo(() => {
     const entries = Object.entries(backgroundData || {})
