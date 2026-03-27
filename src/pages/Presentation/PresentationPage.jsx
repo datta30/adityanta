@@ -8,6 +8,7 @@ const PresentationPage = () => {
   const navigate = useNavigate()
     const { frames, editorBackground } = useEditor()
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
+  const [hasStarted, setHasStarted] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const containerRef = useRef(null)
@@ -410,10 +411,19 @@ const PresentationPage = () => {
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-        focusSlide(currentSlideIndex)
+      if (!hasStarted) {
+        focusOverview()
+        return
+      }
+      focusSlide(currentSlideIndex)
     }, 50)
     return () => clearTimeout(timeout)
-  }, [currentSlideIndex, focusSlide])
+  }, [currentSlideIndex, hasStarted, focusOverview, focusSlide])
+
+  const startPresentation = () => {
+    setHasStarted(true)
+    setCurrentSlideIndex((prev) => Math.max(0, Math.min(frames.length - 1, prev)))
+  }
 
   const handleMouseMove = () => {
     setShowControls(true)
@@ -451,21 +461,32 @@ const PresentationPage = () => {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        exitPresentation()
+        return
+      }
+      if (!hasStarted && (e.key === ' ' || e.key === 'Enter')) {
+        e.preventDefault()
+        startPresentation()
+        return
+      }
+      if (!hasStarted) return
       if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') goToNext()
       if (e.key === 'ArrowLeft') goToPrev()
-      if (e.key === 'Escape') exitPresentation()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [frames.length])
+  }, [frames.length, hasStarted])
 
   return (
     <div
         className="fixed inset-0 flex items-center justify-center overflow-hidden"
         style={{
-          backgroundColor: '#ffffff',
-          backgroundImage: 'none',
-          backgroundSize: 'auto',
+          backgroundColor: '#f5f5f2',
+          backgroundImage: editorBackground
+            ? `linear-gradient(rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.38)), url("${editorBackground}")`
+            : 'radial-gradient(circle, #c8c8c4 1px, transparent 1px)',
+          backgroundSize: editorBackground ? 'cover' : '28px 28px',
           backgroundPosition: 'center',
           backgroundAttachment: 'fixed'
         }}
@@ -497,9 +518,9 @@ const PresentationPage = () => {
                 height: frameBox.height,
                 background: frameData?.backgroundImage
                   ? `url("${frameData.backgroundImage}") center/cover no-repeat`
-                  : (editorBackground && (!frameData?.backgroundColor || frameData.backgroundColor === '#ffffff')
-                    ? 'transparent'
-                    : (frameData?.backgroundColor || frameData?.bg || 'transparent')),
+                  : ((frameData?.backgroundColor && frameData.backgroundColor !== 'transparent')
+                    ? frameData.backgroundColor
+                    : (frameData?.bg && frameData.bg !== 'transparent' ? frameData.bg : '#ffffff')),
                 borderRadius: '8px',
                 transition: 'opacity 0.4s ease, transform 0.4s ease',
               }}
@@ -527,6 +548,14 @@ const PresentationPage = () => {
 
       {showControls && (
         <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center gap-4 bg-gray-800/80 backdrop-blur px-6 py-3 rounded-2xl animate-fade-in shadow-2xl z-50 transition-opacity duration-300">
+          {!hasStarted && (
+            <button onClick={startPresentation} className="px-4 py-2 rounded-lg bg-white text-gray-900 font-semibold hover:bg-gray-100 transition-colors">
+              Start Presentation
+            </button>
+          )}
+
+          {hasStarted && (
+            <>
           <button onClick={goToPrev} disabled={currentSlideIndex === 0} className="p-2 text-white hover:bg-white/20 rounded-full transition-colors disabled:opacity-50">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M15 19l-7-7 7-7" />
@@ -558,6 +587,8 @@ const PresentationPage = () => {
               </svg>
             )}
           </button>
+            </>
+          )}
 
           <button onClick={exitPresentation} className="p-2 text-red-400 hover:bg-red-400/20 rounded-full transition-colors ml-2">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
