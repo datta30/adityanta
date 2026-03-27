@@ -13,23 +13,67 @@ const PresentationPageV2 = () => {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showQR, setShowQR] = useState(false)
+  const [slideTransitionKey, setSlideTransitionKey] = useState(0)
+  const [navDirection, setNavDirection] = useState('next')
   const slideViewportRef = useRef(null)
   const [slideScale, setSlideScale] = useState(1)
+  const previousSlideIndexRef = useRef(0)
 
   const getAnimationClass = (animation) => {
     switch (animation) {
-      case 'fade': return 'animate-fade-in'
-      case 'slide-up': return 'animate-slide-up-content'
-      case 'slide-right': return 'animate-slide-right-content'
-      case 'zoom': return 'animate-zoom-in'
-      case 'bounce': return 'animate-bounce-in'
+      case 'fadeIn': return 'anim-fadeIn'
+      case 'fadeOut': return 'anim-fadeOut'
+      case 'slideInLeft': return 'anim-slideInLeft'
+      case 'slideInRight': return 'anim-slideInRight'
+      case 'slideInUp': return 'anim-slideInUp'
+      case 'slideInDown': return 'anim-slideInDown'
+      case 'zoomIn':
+      case 'zoom': return 'anim-zoomIn'
+      case 'zoomOut': return 'anim-zoomOut'
+      case 'bounceIn':
+      case 'bounce': return 'anim-bounceIn'
+      case 'rotateIn': return 'anim-rotateIn'
+      case 'flipInX': return 'anim-flipInX'
+      case 'flipInY': return 'anim-flipInY'
+      case 'lightSpeedIn': return 'anim-lightSpeedIn'
+      case 'rollIn': return 'anim-rollIn'
+      case 'slideOutLeft': return 'anim-slideOutLeft'
+      case 'slideOutRight': return 'anim-slideOutRight'
+      case 'pulse': return 'anim-pulse'
+      case 'shake': return 'anim-shake'
+      case 'swing': return 'anim-swing'
+      case 'tada': return 'anim-tada'
+      case 'wobble': return 'anim-wobble'
+      case 'heartBeat': return 'anim-heartBeat'
+      case 'rubberBand': return 'anim-rubberBand'
+      // legacy aliases
+      case 'fade': return 'anim-fadeIn'
+      case 'slide-up': return 'anim-slideInUp'
+      case 'slide-right': return 'anim-slideInRight'
       default: return ''
     }
   }
 
-  const renderElement = (element, slideKey) => {
-    const animClass = getAnimationClass(element.animation)
-    const animStyle = element.animation && element.animation !== 'none' ? {
+  const getSlideTransitionStyle = (transition, direction) => {
+    switch (transition) {
+      case 'fade':
+        return { animation: 'fadeIn 420ms ease-out both' }
+      case 'slide':
+        return { animation: direction === 'prev' ? 'slideInLeft 460ms ease-out both' : 'slideInRight 460ms ease-out both' }
+      case 'zoom':
+        return { animation: 'preziZoomIn 720ms cubic-bezier(0.18, 0.89, 0.32, 1.08) both' }
+      case 'flip':
+        return { animation: 'flipInY 520ms ease-out both' }
+      case 'cube':
+        return { animation: direction === 'prev' ? 'cubeInLeft 560ms ease-out both' : 'cubeInRight 560ms ease-out both' }
+      default:
+        return {}
+    }
+  }
+
+  const renderElement = (element, slideKey, disableAnimation = false) => {
+    const animClass = disableAnimation ? '' : getAnimationClass(element.animation)
+    const animStyle = !disableAnimation && element.animation && element.animation !== 'none' ? {
       '--anim-duration': `${element.animationSpeed || 500}ms`,
       '--anim-delay': `${element.animationDelay || 0}ms`,
     } : {}
@@ -330,6 +374,15 @@ const PresentationPageV2 = () => {
   }, [frames.length])
 
   useEffect(() => {
+    const prev = previousSlideIndexRef.current
+    if (currentSlideIndex !== prev) {
+      setSlideTransitionKey((key) => key + 1)
+      setNavDirection(currentSlideIndex > prev ? 'next' : 'prev')
+      previousSlideIndexRef.current = currentSlideIndex
+    }
+  }, [currentSlideIndex])
+
+  useEffect(() => {
     const updateScale = () => {
       if (!slideViewportRef.current) return
       const rect = slideViewportRef.current.getBoundingClientRect()
@@ -354,10 +407,12 @@ const PresentationPageV2 = () => {
   }
 
   const goToPrev = () => {
+    setNavDirection('prev')
     setCurrentSlideIndex((prev) => Math.max(0, prev - 1))
   }
 
   const goToNext = () => {
+    setNavDirection('next')
     setCurrentSlideIndex((prev) => Math.min(frames.length - 1, prev + 1))
   }
 
@@ -403,6 +458,7 @@ const PresentationPageV2 = () => {
   }, [frames.length, templateId])
 
   const shareUrl = typeof window !== 'undefined' ? window.location.href : ''
+  const slideTransitionStyle = getSlideTransitionStyle(currentFrame?.transition || 'fade', navDirection)
 
   return (
     <div className="fixed inset-0 bg-[#0b1220] flex flex-col overflow-hidden">
@@ -441,6 +497,7 @@ const PresentationPageV2 = () => {
             }}
           >
             <div
+              key={`slide-surface-${currentSlideIndex}-${slideTransitionKey}`}
               className="absolute left-0 top-0"
               style={{
                 width: SLIDE_WIDTH,
@@ -450,9 +507,10 @@ const PresentationPageV2 = () => {
                 background: currentFrame?.backgroundImage
                   ? `url("${currentFrame.backgroundImage}") center/cover no-repeat`
                   : (currentFrame?.backgroundColor || '#efefef'),
+                ...slideTransitionStyle,
               }}
             >
-              {(currentFrame?.elements || []).map((el) => renderElement(el, currentSlideIndex))}
+              {(currentFrame?.elements || []).map((el) => renderElement(el, `${currentSlideIndex}-${slideTransitionKey}`))}
             </div>
           </div>
         </div>
@@ -462,7 +520,7 @@ const PresentationPageV2 = () => {
             <div className="p-2 bg-gray-100">
               <div className="relative rounded overflow-hidden border border-gray-300 bg-white" style={{ aspectRatio: '16 / 9' }}>
                 <div className="absolute inset-0 scale-[0.24] origin-top-left" style={{ width: 1280, height: 720 }}>
-                  {(currentFrame?.elements || []).slice(0, 3).map((el) => renderElement(el, `thumb-${currentSlideIndex}`))}
+                  {(currentFrame?.elements || []).slice(0, 3).map((el) => renderElement(el, `thumb-${currentSlideIndex}`, true))}
                 </div>
               </div>
             </div>
@@ -507,7 +565,11 @@ const PresentationPageV2 = () => {
             min={0}
             max={Math.max(0, frames.length - 1)}
             value={currentSlideIndex}
-            onChange={(e) => setCurrentSlideIndex(Number(e.target.value))}
+            onChange={(e) => {
+              const target = Number(e.target.value)
+              setNavDirection(target < currentSlideIndex ? 'prev' : 'next')
+              setCurrentSlideIndex(target)
+            }}
             className="w-full accent-blue-500"
           />
         </div>
