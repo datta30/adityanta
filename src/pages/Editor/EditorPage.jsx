@@ -285,7 +285,7 @@ const EditorPage = () => {
         id: 1,
         title: 'Slide 1',
         preview: 'Slide 1',
-        backgroundColor: '#ffffff',
+        backgroundColor: 'transparent',
         backgroundImage: null,
         notes: '',
         transition: 'fade',
@@ -524,7 +524,7 @@ const EditorPage = () => {
           id: i + 1,
           title: i === 0 ? fallbackTitle : `Slide ${i + 1}`,
           preview: i === 0 ? fallbackTitle : `Slide ${i + 1}`,
-          backgroundColor: '#ffffff',
+          backgroundColor: 'transparent',
           backgroundImage: null,
           notes: '',
           transition: 'fade',
@@ -3207,7 +3207,13 @@ const EditorPage = () => {
                         ? 'none'
                         : (selected ? '2px solid #1a73e8' : '1px solid #e5e7eb'),
                       borderRadius: isOverviewFrame ? '20px' : '16px',
-                      background: isOverviewFrame ? 'transparent' : (frameData?.backgroundImage ? `url("${frameData.backgroundImage}") center/cover no-repeat` : (frameData?.backgroundColor || '#ffffff')),
+                      background: isOverviewFrame
+                        ? 'transparent'
+                        : (frameData?.backgroundImage
+                          ? `url("${frameData.backgroundImage}") center/cover no-repeat`
+                          : (editorBgImage && (!frameData?.backgroundColor || frameData.backgroundColor === '#ffffff')
+                            ? 'transparent'
+                            : (frameData?.backgroundColor || 'transparent'))),
                       boxShadow: isOverviewFrame
                         ? 'none'
                         : (selected ? '0 14px 40px rgba(15, 23, 42, 0.18)' : '0 8px 24px rgba(15, 23, 42, 0.12)'),

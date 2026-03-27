@@ -495,7 +495,11 @@ const PresentationPage = () => {
                 top: frameBox.y,
                 width: frameBox.width,
                 height: frameBox.height,
-                backgroundColor: frameData?.bg || 'white',
+                background: frameData?.backgroundImage
+                  ? `url("${frameData.backgroundImage}") center/cover no-repeat`
+                  : (editorBackground && (!frameData?.backgroundColor || frameData.backgroundColor === '#ffffff')
+                    ? 'transparent'
+                    : (frameData?.backgroundColor || frameData?.bg || 'transparent')),
                 borderRadius: '8px',
                 transition: 'opacity 0.4s ease, transform 0.4s ease',
               }}

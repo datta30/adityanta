@@ -246,7 +246,7 @@ const createBlankFrame = (id, title = 'Slide 1') => ({
       backgroundColor: 'transparent',
     },
   ],
-  backgroundColor: '#ffffff',
+  backgroundColor: 'transparent',
   notes: '', // Presenter notes
   transition: 'fade', // Slide transition effect
 })
@@ -262,7 +262,7 @@ const createBlankProject = () => ({
       id: 1,
       title: 'Overview',
       preview: 'Overview',
-      backgroundColor: '#ffffff',
+      backgroundColor: 'transparent',
       notes: '',
       transition: 'fade',
       elements: [
