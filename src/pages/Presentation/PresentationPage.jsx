@@ -77,22 +77,51 @@ const PresentationPage = () => {
   const [camera, setCamera] = useState({ zoom: 1, panX: 0, panY: 0 })
 
   const getAnimationClass = (animation) => {
-    switch (animation) {
-      case 'fade': return 'anim-fadeIn'
-      case 'slide-up': return 'anim-slideInUp'
-      case 'slide-right': return 'anim-slideInRight'
-      case 'zoom': return 'anim-zoomIn'
-      case 'bounce': return 'anim-bounceIn'
-      default: return ''
+    if (!animation || animation === 'none') return ''
+    const animMap = {
+      'fadeIn': 'anim-fadeIn',
+      'fadeOut': 'anim-fadeOut',
+      'slideInLeft': 'anim-slideInLeft',
+      'slideInRight': 'anim-slideInRight',
+      'slideInUp': 'anim-slideInUp',
+      'slideInDown': 'anim-slideInDown',
+      'zoomIn': 'anim-zoomIn',
+      'zoomOut': 'anim-zoomOut',
+      'bounceIn': 'anim-bounceIn',
+      'rotateIn': 'anim-rotateIn',
+      'flipInX': 'anim-flipInX',
+      'flipInY': 'anim-flipInY',
+      'lightSpeedIn': 'anim-lightSpeedIn',
+      'rollIn': 'anim-rollIn',
+      'slideOutLeft': 'anim-slideOutLeft',
+      'slideOutRight': 'anim-slideOutRight',
+      'pulse': 'anim-pulse',
+      'shake': 'anim-shake',
+      'swing': 'anim-swing',
+      'tada': 'anim-tada',
+      'wobble': 'anim-wobble',
+      'heartBeat': 'anim-heartBeat',
+      'rubberBand': 'anim-rubberBand',
+      // Legacy aliases
+      'fade': 'anim-fadeIn',
+      'slide-up': 'anim-slideInUp',
+      'slide-right': 'anim-slideInRight',
+      'zoom': 'anim-zoomIn',
+      'bounce': 'anim-bounceIn',
     }
+    return animMap[animation] || ''
   }
 
   const renderElement = (element, slideKey, elementIndex = 0) => {
-    const animClass = getAnimationClass(element.animation)
-    const animStyle = element.animation && element.animation !== 'none' ? {
+    // Use element's animation or fall back to a default entrance animation
+    const effectiveAnimation = (element.animation && element.animation !== 'none')
+      ? element.animation
+      : 'fadeIn'
+    const animClass = getAnimationClass(effectiveAnimation)
+    const animStyle = {
       '--anim-duration': `${Math.round((element.animationSpeed || 500) * 1.35)}ms`,
       '--anim-delay': `${(element.animationDelay || 0) + (elementIndex * 140)}ms`,
-    } : {}
+    }
 
     const baseStyle = {
       position: 'absolute',

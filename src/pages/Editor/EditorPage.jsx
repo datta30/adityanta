@@ -85,6 +85,17 @@ const buildInterFrameConnectors = (layout) => {
 const normalizeTopicForBackground = (topic) => {
   const value = `${topic || ''}`.trim().toLowerCase()
   const topicMap = {
+    business: 'Business',
+    economics: 'Economics',
+    history: 'History',
+    geography: 'Geography',
+    science: 'Science',
+    marketing: 'Marketing',
+    'legal studies': 'Legal Studies',
+    'political science': 'Political Science',
+    'music and dance': 'Music and dance',
+    'technology & computer subjects': 'Technology & Computer Subjects',
+    'physical & skill subjects': 'Physical & Skill Subjects',
     mathematics: 'Maths',
     maths: 'Maths',
     math: 'Maths',
@@ -92,7 +103,7 @@ const normalizeTopicForBackground = (topic) => {
     'financial markets management': 'Finance',
     'fine arts / painting': 'Fine Arts - Painting',
     'fine arts - painting': 'Fine Arts - Painting',
-    literature: 'Generic',
+    literature: 'History',
     generic: 'Generic',
     general: 'Generic',
   }
@@ -462,8 +473,12 @@ const EditorPage = () => {
   const defaultEditorBg = useMemo(() => {
     const topic = normalizeTopicForBackground(projectTopic || 'Generic')
     const bgs = backgroundData[topic] || backgroundData['Generic'] || []
-    return bgs.length > 0 ? bgs[Math.floor(Math.random() * bgs.length)] : null
-  }, [projectTopic])
+    if (bgs.length === 0) return null
+
+    const stableSeed = `${templateId || ''}|${projectTopic || topic}`
+    const hash = [...stableSeed].reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+    return bgs[hash % bgs.length]
+  }, [projectTopic, templateId])
 
   const editorBgImage = editorBackground !== undefined ? editorBackground : defaultEditorBg
 
@@ -503,6 +518,8 @@ const EditorPage = () => {
   const [camera, setCamera] = useState({ zoom: 0.75, panX: 0, panY: 0 })
   const inFlightTemplateRef = useRef({ id: null, promise: null })
   const hasInitializedCameraRef = useRef(false)
+  const pendingFocusModeRef = useRef('frame')
+  const didFrameDragRef = useRef(false)
 
   // Drawing state
   const drawingCanvasRef = useRef(null)
@@ -996,6 +1013,7 @@ const EditorPage = () => {
       // New Slide (Ctrl+M like PowerPoint)
       if ((e.ctrlKey || e.metaKey) && e.key === 'm') {
         e.preventDefault()
+        pendingFocusModeRef.current = 'frame'
         addFrame()
         toast.success('New slide added')
       }
@@ -1230,8 +1248,9 @@ const EditorPage = () => {
   // Drag handlers
 
   const handleFrameDragStart = (e, frameBox) => {
+    if (e.button !== 0) return // only left click
     e.stopPropagation()
-    e.preventDefault()
+    didFrameDragRef.current = false
     setDraggingFrameId(frameBox.id)
     setFrameDragStart({
       x: e.clientX,
@@ -1245,6 +1264,10 @@ const EditorPage = () => {
     if (!draggingFrameId) return
     const deltaX = (e.clientX - frameDragStart.x) / camera.zoom
     const deltaY = (e.clientY - frameDragStart.y) / camera.zoom
+    // Mark as real drag if moved more than 4px
+    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+      didFrameDragRef.current = true
+    }
     updateFrameLayout(draggingFrameId, {
       x: frameDragStart.frameX + deltaX,
       y: frameDragStart.frameY + deltaY
@@ -2624,14 +2647,39 @@ const EditorPage = () => {
   }, [focusOverview, frameMapLayout.length])
 
   const handleFrameFocus = useCallback((frameId, mode = 'frame') => {
-    setIsNavigating(false); // Make sure transition is enabled for focus
-    setActiveFrameId(frameId)
-    if (mode === 'overview') {
-      focusOverview()
+    // Skip focus/zoom if user just finished dragging a frame
+    if (didFrameDragRef.current) {
+      didFrameDragRef.current = false
       return
     }
-    focusFrameById(frameId)
-  }, [focusFrameById, focusOverview, setActiveFrameId])
+    pendingFocusModeRef.current = mode
+    setActiveFrameId(frameId)
+  }, [setActiveFrameId])
+
+  // Wrap addFrame so the auto-focus effect picks up the new frame
+  const handleAddFrame = useCallback((templateType) => {
+    pendingFocusModeRef.current = 'frame'
+    addFrame(templateType)
+    // addFrame already calls setActiveFrameId(newId), triggering the effect below
+  }, [addFrame])
+
+  // Auto-focus camera when activeFrameId changes (covers clicks, new frame addition, etc.)
+  const prevActiveFrameIdRef = useRef(activeFrameId)
+  useEffect(() => {
+    if (activeFrameId !== prevActiveFrameIdRef.current) {
+      prevActiveFrameIdRef.current = activeFrameId
+      setIsNavigating(false) // enable CSS transition for smooth animation
+      if (pendingFocusModeRef.current === 'overview') {
+        focusOverview()
+      } else {
+        const target = frameMapLayout.find(f => f.id === activeFrameId)
+        if (target) {
+          // Use gentler zoom (0.55) so frame doesn't appear to grow dramatically
+          updateCameraToBox(target, 0.55)
+        }
+      }
+    }
+  }, [activeFrameId, frameMapLayout, updateCameraToBox, focusOverview])
 
   return (
     <div className="h-screen flex flex-col bg-gray-100 relative">
@@ -3411,7 +3459,7 @@ const EditorPage = () => {
           frames={frames}
           activeFrame={activeFrameId}
           setActiveFrame={handleFrameFocus}
-          addNewFrame={addFrame}
+          addNewFrame={handleAddFrame}
           deleteFrame={deleteFrame}
           duplicateFrame={duplicateFrame}
           reorderFrames={reorderFrames}
@@ -3676,9 +3724,11 @@ const EditorPage = () => {
 
               <button
                 onClick={() => {
-                  const next = Math.max(0.25, camera.zoom - 0.1)
+                  setIsNavigating(true)
+                  const next = Math.max(0.1, camera.zoom - 0.1)
                   setCamera(prev => ({ ...prev, zoom: next }))
                   setZoom(Math.round(next * 100))
+                  setTimeout(() => setIsNavigating(false), 50)
                 }}
                 className="text-lg hover:text-gray-900 transition-all"
                 title="Zoom out"
@@ -3691,14 +3741,16 @@ const EditorPage = () => {
                 className="text-sm font-semibold hover:text-gray-900 transition-all"
                 title="Reset zoom"
               >
-                98%
+                {Math.round(camera.zoom * 100)}%
               </button>
 
               <button
                 onClick={() => {
+                  setIsNavigating(true)
                   const next = Math.min(2.2, camera.zoom + 0.1)
                   setCamera(prev => ({ ...prev, zoom: next }))
                   setZoom(Math.round(next * 100))
+                  setTimeout(() => setIsNavigating(false), 50)
                 }}
                 className="text-lg hover:text-gray-900 transition-all"
                 title="Zoom in"

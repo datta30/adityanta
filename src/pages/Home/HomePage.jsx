@@ -27,6 +27,17 @@ const NEW_PROJECT_BG_KEY = 'adityanta_new_project_bg'
 const normalizeTopicForBackground = (topic) => {
   const value = `${topic || ''}`.trim().toLowerCase()
   const topicMap = {
+    business: 'Business',
+    economics: 'Economics',
+    history: 'History',
+    geography: 'Geography',
+    science: 'Science',
+    marketing: 'Marketing',
+    'legal studies': 'Legal Studies',
+    'political science': 'Political Science',
+    'music and dance': 'Music and dance',
+    'technology & computer subjects': 'Technology & Computer Subjects',
+    'physical & skill subjects': 'Physical & Skill Subjects',
     mathematics: 'Maths',
     maths: 'Maths',
     math: 'Maths',
@@ -34,7 +45,7 @@ const normalizeTopicForBackground = (topic) => {
     'financial markets management': 'Finance',
     'fine arts / painting': 'Fine Arts - Painting',
     'fine arts - painting': 'Fine Arts - Painting',
-    literature: 'Generic',
+    literature: 'History',
     generic: 'Generic',
     general: 'Generic',
   }
