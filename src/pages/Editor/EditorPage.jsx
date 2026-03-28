@@ -20,62 +20,56 @@ const SLIDE_WIDTH = 1280
 const SLIDE_HEIGHT = 720
 const WORLD_PADDING = 220
 
-// Fixed side-column dimensions derived from PREZI_LAYOUT_PRESETS (never change)
-const SIDE_COL_LEFT_X = 60
-const SIDE_COL_RIGHT_X = 2260
-const SIDE_COL_WIDTH = 640
-const SIDE_Y_START = 120
-const SIDE_TOTAL_HEIGHT = 1030 // y: 120 → 1150
-const SIDE_GAP = 16
-const FRAME_MIN_H = 90 // minimum useful frame height
+const FRAME_GAP = 20
+const FRAME_MIN_H = 80
+// Background bounds (from PREZI_LAYOUT_PRESETS with 40px padding each side)
+const BG_L = 20, BG_T = 80, BG_R = 2940, BG_B = 1190
+// Hero frame — fixed central position (frame 0)
+const HERO_LAYOUT = { x: 820, y: 220, width: 1280, height: 720 }
+// Side areas flanking the hero, entirely within background bounds
+const LEFT_AREA  = { x: 40,   y: 100, w: 760, h: 1070 } // between bg-left and hero
+const RIGHT_AREA = { x: 2120, y: 100, w: 800, h: 1070 } // between hero-right and bg-right
 
-// Clean grid auto-layout: evenly distributes auto-layout frames across left/right columns,
-// avoiding any manually-placed (stored-layout) frames.
-const computeIntelligentAutoLayouts = (frames) => {
-  const autoCount = frames.filter((f, i) => i > 0 && !f.layout).length
-  if (autoCount === 0) return []
-
-  // Collect bounding rects of manually-placed side frames
-  const occupied = frames
-    .filter((f, i) => i > 0 && f.layout)
-    .map(f => ({
-      x: f.layout.x, y: f.layout.y,
-      width: f.layout.width || SIDE_COL_WIDTH,
-      height: f.layout.height || 360
-    }))
-
-  // Split auto frames evenly: left column first, then right
-  const leftN = Math.ceil(autoCount / 2)
-  const rightN = autoCount - leftN
-
-  const layoutsForColumn = (colX, count) => {
-    if (count === 0) return []
-    const frameH = Math.max(FRAME_MIN_H, Math.floor((SIDE_TOTAL_HEIGHT - SIDE_GAP * (count - 1)) / count))
-    const layouts = []
-    let y = SIDE_Y_START
-    for (let i = 0; i < count; i++) {
-      let candidate = { x: colX, y, width: SIDE_COL_WIDTH, height: frameH }
-      // Nudge down past any occupied frames that overlap
-      let attempts = 0
-      while (attempts < 20) {
-        const overlap = occupied.find(o =>
-          candidate.x < o.x + o.width && candidate.x + candidate.width > o.x &&
-          candidate.y < o.y + o.height && candidate.y + candidate.height > o.y
-        )
-        if (!overlap) break
-        candidate = { ...candidate, y: overlap.y + overlap.height + SIDE_GAP }
-        attempts++
-      }
-      layouts.push(candidate)
-      occupied.push(candidate)
-      y = candidate.y + candidate.height + SIDE_GAP
-    }
-    return layouts
+// Clamp a stored layout so it stays fully inside the background.
+const clampToBg = (layout) => {
+  const w = layout.width  || 200
+  const h = layout.height || 150
+  return {
+    ...layout,
+    x: Math.max(BG_L, Math.min(layout.x, BG_R - w)),
+    y: Math.max(BG_T, Math.min(layout.y, BG_B - h)),
   }
+}
 
+// Distribute N frames inside one side area, auto-choosing column count so
+// frame height stays >= FRAME_MIN_H. All positions guaranteed within background.
+const layoutsForSideArea = (area, count) => {
+  if (count === 0) return []
+  let cols = 1
+  while (cols < 4) {
+    const rows = Math.ceil(count / cols)
+    if ((area.h - FRAME_GAP * (rows - 1)) / rows >= FRAME_MIN_H) break
+    cols++
+  }
+  const rows  = Math.ceil(count / cols)
+  const colW  = Math.floor((area.w - FRAME_GAP * (cols - 1)) / cols)
+  const rowH  = Math.max(FRAME_MIN_H, Math.floor((area.h - FRAME_GAP * (rows - 1)) / rows))
+  return Array.from({ length: count }, (_, i) => ({
+    x: area.x + (i % cols) * (colW + FRAME_GAP),
+    y: area.y + Math.floor(i / cols) * (rowH + FRAME_GAP),
+    width: colW,
+    height: rowH,
+  }))
+}
+
+// Compute layout positions for all side frames (frames 1+).
+// Left and right areas are filled evenly; everything stays inside background.
+const computeFrameLayouts = (sideCount) => {
+  if (sideCount === 0) return []
+  const leftN = Math.ceil(sideCount / 2)
   return [
-    ...layoutsForColumn(SIDE_COL_LEFT_X, leftN),
-    ...layoutsForColumn(SIDE_COL_RIGHT_X, rightN),
+    ...layoutsForSideArea(LEFT_AREA,  leftN),
+    ...layoutsForSideArea(RIGHT_AREA, sideCount - leftN),
   ]
 }
 const templateRuntimeCache = new Map()
@@ -618,14 +612,13 @@ const EditorPage = () => {
   const [frameResizeStart, setFrameResizeStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0, frameW: 0, frameH: 0, frameId: null })
 
   const frameMapLayout = useMemo(() => {
-    const autoLayouts = computeIntelligentAutoLayouts(frames)
-    let autoIndex = 0
+    const sideLayouts = computeFrameLayouts(Math.max(0, frames.length - 1))
     return frames.map((frame, index) => {
-      if (frame.layout) return { id: frame.id, ...frame.layout }
-      if (index === 0) return { id: frame.id, ...PREZI_LAYOUT_PRESETS[0] }
-      const layout = autoLayouts[autoIndex] || { x: SIDE_COL_LEFT_X, y: SIDE_Y_START + autoIndex * (300 + SIDE_GAP), width: SIDE_COL_WIDTH, height: 300 }
-      autoIndex++
-      return { id: frame.id, ...layout }
+      if (index === 0) {
+        return { id: frame.id, ...(frame.layout ? clampToBg(frame.layout) : HERO_LAYOUT) }
+      }
+      if (frame.layout) return { id: frame.id, ...clampToBg(frame.layout) }
+      return { id: frame.id, ...(sideLayouts[index - 1] || sideLayouts[sideLayouts.length - 1] || HERO_LAYOUT) }
     })
   }, [frames])
 
@@ -1327,8 +1320,8 @@ const EditorPage = () => {
       didFrameDragRef.current = true
     }
     updateFrameLayout(draggingFrameId, {
-      x: frameDragStart.frameX + deltaX,
-      y: frameDragStart.frameY + deltaY,
+      x: Math.max(BG_L, Math.min(frameDragStart.frameX + deltaX, BG_R - frameDragStart.frameW)),
+      y: Math.max(BG_T, Math.min(frameDragStart.frameY + deltaY, BG_B - frameDragStart.frameH)),
       width: frameDragStart.frameW,
       height: frameDragStart.frameH
     })
@@ -1377,6 +1370,9 @@ const EditorPage = () => {
       y = y + d; h = h - d
     }
 
+    // Clamp to background bounds
+    x = Math.max(BG_L, x); y = Math.max(BG_T, y)
+    w = Math.min(w, BG_R - x); h = Math.min(h, BG_B - y)
     updateFrameLayout(frameResizeStart.frameId, { x, y, width: Math.round(w), height: Math.round(h) })
   }, [isResizingFrame, frameResizeHandle, frameResizeStart, camera.zoom, updateFrameLayout])
 

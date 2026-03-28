@@ -12,56 +12,48 @@ const PREZI_LAYOUT_PRESETS = [
 ]
 const PREZI_FLOW_ORDER = [1, 2, 0, 3, 4]
 
-const SIDE_COL_LEFT_X = 60
-const SIDE_COL_RIGHT_X = 2260
-const SIDE_COL_WIDTH = 640
-const SIDE_Y_START = 120
-const SIDE_TOTAL_HEIGHT = 1030
-const SIDE_GAP = 16
-const FRAME_MIN_H = 90
+const FRAME_GAP = 20
+const FRAME_MIN_H = 80
+const BG_L = 20, BG_T = 80, BG_R = 2940, BG_B = 1190
+const HERO_LAYOUT = { x: 820, y: 220, width: 1280, height: 720 }
+const LEFT_AREA  = { x: 40,   y: 100, w: 760, h: 1070 }
+const RIGHT_AREA = { x: 2120, y: 100, w: 800, h: 1070 }
 
-const computeIntelligentAutoLayouts = (frames) => {
-  const autoCount = frames.filter((f, i) => i > 0 && !f.layout).length
-  if (autoCount === 0) return []
-
-  const occupied = frames
-    .filter((f, i) => i > 0 && f.layout)
-    .map(f => ({
-      x: f.layout.x, y: f.layout.y,
-      width: f.layout.width || SIDE_COL_WIDTH,
-      height: f.layout.height || 360
-    }))
-
-  const leftN = Math.ceil(autoCount / 2)
-  const rightN = autoCount - leftN
-
-  const layoutsForColumn = (colX, count) => {
-    if (count === 0) return []
-    const frameH = Math.max(FRAME_MIN_H, Math.floor((SIDE_TOTAL_HEIGHT - SIDE_GAP * (count - 1)) / count))
-    const layouts = []
-    let y = SIDE_Y_START
-    for (let i = 0; i < count; i++) {
-      let candidate = { x: colX, y, width: SIDE_COL_WIDTH, height: frameH }
-      let attempts = 0
-      while (attempts < 20) {
-        const overlap = occupied.find(o =>
-          candidate.x < o.x + o.width && candidate.x + candidate.width > o.x &&
-          candidate.y < o.y + o.height && candidate.y + candidate.height > o.y
-        )
-        if (!overlap) break
-        candidate = { ...candidate, y: overlap.y + overlap.height + SIDE_GAP }
-        attempts++
-      }
-      layouts.push(candidate)
-      occupied.push(candidate)
-      y = candidate.y + candidate.height + SIDE_GAP
-    }
-    return layouts
+const clampToBg = (layout) => {
+  const w = layout.width  || 200
+  const h = layout.height || 150
+  return {
+    ...layout,
+    x: Math.max(BG_L, Math.min(layout.x, BG_R - w)),
+    y: Math.max(BG_T, Math.min(layout.y, BG_B - h)),
   }
+}
 
+const layoutsForSideArea = (area, count) => {
+  if (count === 0) return []
+  let cols = 1
+  while (cols < 4) {
+    const rows = Math.ceil(count / cols)
+    if ((area.h - FRAME_GAP * (rows - 1)) / rows >= FRAME_MIN_H) break
+    cols++
+  }
+  const rows = Math.ceil(count / cols)
+  const colW = Math.floor((area.w - FRAME_GAP * (cols - 1)) / cols)
+  const rowH = Math.max(FRAME_MIN_H, Math.floor((area.h - FRAME_GAP * (rows - 1)) / rows))
+  return Array.from({ length: count }, (_, i) => ({
+    x: area.x + (i % cols) * (colW + FRAME_GAP),
+    y: area.y + Math.floor(i / cols) * (rowH + FRAME_GAP),
+    width: colW,
+    height: rowH,
+  }))
+}
+
+const computeFrameLayouts = (sideCount) => {
+  if (sideCount === 0) return []
+  const leftN = Math.ceil(sideCount / 2)
   return [
-    ...layoutsForColumn(SIDE_COL_LEFT_X, leftN),
-    ...layoutsForColumn(SIDE_COL_RIGHT_X, rightN),
+    ...layoutsForSideArea(LEFT_AREA,  leftN),
+    ...layoutsForSideArea(RIGHT_AREA, sideCount - leftN),
   ]
 }
 
@@ -473,14 +465,13 @@ const PresentationPage = () => {
   }
 
     const frameMapLayout = useMemo(() => {
-    const autoLayouts = computeIntelligentAutoLayouts(frames)
-    let autoIndex = 0
+    const sideLayouts = computeFrameLayouts(Math.max(0, frames.length - 1))
     return frames.map((frame, index) => {
-      if (frame.layout) return { id: frame.id, ...frame.layout }
-      if (index === 0) return { id: frame.id, ...PREZI_LAYOUT_PRESETS[0] }
-      const layout = autoLayouts[autoIndex] || { x: SIDE_COL_LEFT_X, y: SIDE_Y_START + autoIndex * (300 + SIDE_GAP), width: SIDE_COL_WIDTH, height: 300 }
-      autoIndex++
-      return { id: frame.id, ...layout }
+      if (index === 0) {
+        return { id: frame.id, ...(frame.layout ? clampToBg(frame.layout) : HERO_LAYOUT) }
+      }
+      if (frame.layout) return { id: frame.id, ...clampToBg(frame.layout) }
+      return { id: frame.id, ...(sideLayouts[index - 1] || sideLayouts[sideLayouts.length - 1] || HERO_LAYOUT) }
     })
   }, [frames])
 
