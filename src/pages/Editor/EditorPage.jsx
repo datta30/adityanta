@@ -27,75 +27,55 @@ const SIDE_COL_WIDTH = 640
 const SIDE_Y_START = 120
 const SIDE_TOTAL_HEIGHT = 1030 // y: 120 → 1150
 const SIDE_GAP = 16
-const SIDE_Y_END = SIDE_Y_START + SIDE_TOTAL_HEIGHT
 const FRAME_MIN_H = 90 // minimum useful frame height
 
-// Returns free vertical ranges in a column that are not occupied by stored-layout frames.
-const getColumnFreeSlots = (colX, storedSideFrames) => {
-  const inCol = storedSideFrames
-    .filter(f => f.layout.x < colX + SIDE_COL_WIDTH && f.layout.x + (f.layout.width || SIDE_COL_WIDTH) > colX)
-    .map(f => ({ y: f.layout.y, bottom: f.layout.y + (f.layout.height || 360) }))
-    .sort((a, b) => a.y - b.y)
-
-  const slots = []
-  let cursor = SIDE_Y_START
-  for (const occ of inCol) {
-    const available = occ.y - cursor - SIDE_GAP
-    if (available >= FRAME_MIN_H) slots.push({ y: cursor, height: available })
-    cursor = Math.max(cursor, occ.bottom + SIDE_GAP)
-  }
-  const tail = SIDE_Y_END - cursor
-  if (tail >= FRAME_MIN_H) slots.push({ y: cursor, height: tail })
-  return slots
-}
-
-// Distribute `count` frames into vertical slots within a column.
-const distributeInSlots = (slots, count, colX) => {
-  if (count === 0) return []
-  const totalH = slots.reduce((s, r) => s + r.height, 0)
-  const frameH = totalH > 0
-    ? Math.max(FRAME_MIN_H, Math.round((totalH - SIDE_GAP * Math.max(0, count - 1)) / count))
-    : 360
-  const layouts = []
-  let rem = count
-  for (const slot of slots) {
-    if (rem <= 0) break
-    let y = slot.y
-    while (rem > 0 && y + FRAME_MIN_H <= slot.y + slot.height) {
-      layouts.push({ x: colX, y, width: SIDE_COL_WIDTH, height: Math.min(frameH, slot.y + slot.height - y) })
-      y += frameH + SIDE_GAP
-      rem--
-    }
-  }
-  // Fallback: if slots didn't fit all, stack with overlap at bottom
-  while (rem > 0) {
-    const last = layouts[layouts.length - 1]
-    const y = last ? last.y + last.height + SIDE_GAP : SIDE_Y_START
-    layouts.push({ x: colX, y, width: SIDE_COL_WIDTH, height: 360 })
-    rem--
-  }
-  return layouts
-}
-
-// Intelligent auto-layout: places frames-without-stored-layouts into free space,
-// distributing proportionally between left and right columns to avoid overlaps.
+// Clean grid auto-layout: evenly distributes auto-layout frames across left/right columns,
+// avoiding any manually-placed (stored-layout) frames.
 const computeIntelligentAutoLayouts = (frames) => {
-  const storedSide = frames.filter((f, i) => i > 0 && f.layout)
-  const leftSlots = getColumnFreeSlots(SIDE_COL_LEFT_X, storedSide)
-  const rightSlots = getColumnFreeSlots(SIDE_COL_RIGHT_X, storedSide)
-  const leftFree = leftSlots.reduce((s, r) => s + r.height, 0)
-  const rightFree = rightSlots.reduce((s, r) => s + r.height, 0)
-  const totalFree = leftFree + rightFree
-
   const autoCount = frames.filter((f, i) => i > 0 && !f.layout).length
   if (autoCount === 0) return []
 
-  const leftN = totalFree > 0 ? Math.round(autoCount * leftFree / totalFree) : Math.ceil(autoCount / 2)
+  // Collect bounding rects of manually-placed side frames
+  const occupied = frames
+    .filter((f, i) => i > 0 && f.layout)
+    .map(f => ({
+      x: f.layout.x, y: f.layout.y,
+      width: f.layout.width || SIDE_COL_WIDTH,
+      height: f.layout.height || 360
+    }))
+
+  // Split auto frames evenly: left column first, then right
+  const leftN = Math.ceil(autoCount / 2)
   const rightN = autoCount - leftN
 
+  const layoutsForColumn = (colX, count) => {
+    if (count === 0) return []
+    const frameH = Math.max(FRAME_MIN_H, Math.floor((SIDE_TOTAL_HEIGHT - SIDE_GAP * (count - 1)) / count))
+    const layouts = []
+    let y = SIDE_Y_START
+    for (let i = 0; i < count; i++) {
+      let candidate = { x: colX, y, width: SIDE_COL_WIDTH, height: frameH }
+      // Nudge down past any occupied frames that overlap
+      let attempts = 0
+      while (attempts < 20) {
+        const overlap = occupied.find(o =>
+          candidate.x < o.x + o.width && candidate.x + candidate.width > o.x &&
+          candidate.y < o.y + o.height && candidate.y + candidate.height > o.y
+        )
+        if (!overlap) break
+        candidate = { ...candidate, y: overlap.y + overlap.height + SIDE_GAP }
+        attempts++
+      }
+      layouts.push(candidate)
+      occupied.push(candidate)
+      y = candidate.y + candidate.height + SIDE_GAP
+    }
+    return layouts
+  }
+
   return [
-    ...distributeInSlots(leftSlots, leftN, SIDE_COL_LEFT_X),
-    ...distributeInSlots(rightSlots, rightN, SIDE_COL_RIGHT_X),
+    ...layoutsForColumn(SIDE_COL_LEFT_X, leftN),
+    ...layoutsForColumn(SIDE_COL_RIGHT_X, rightN),
   ]
 }
 const templateRuntimeCache = new Map()
@@ -630,7 +610,7 @@ const EditorPage = () => {
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, elemX: 0, elemY: 0 })
 
   const [draggingFrameId, setDraggingFrameId] = useState(null)
-  const [frameDragStart, setFrameDragStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0 })
+  const [frameDragStart, setFrameDragStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0, frameW: 0, frameH: 0 })
 
   // Frame resize state
   const [isResizingFrame, setIsResizingFrame] = useState(false)
@@ -1332,7 +1312,9 @@ const EditorPage = () => {
       x: e.clientX,
       y: e.clientY,
       frameX: frameBox.x,
-      frameY: frameBox.y
+      frameY: frameBox.y,
+      frameW: frameBox.width,
+      frameH: frameBox.height
     })
   }
 
@@ -1346,7 +1328,9 @@ const EditorPage = () => {
     }
     updateFrameLayout(draggingFrameId, {
       x: frameDragStart.frameX + deltaX,
-      y: frameDragStart.frameY + deltaY
+      y: frameDragStart.frameY + deltaY,
+      width: frameDragStart.frameW,
+      height: frameDragStart.frameH
     })
   }, [draggingFrameId, frameDragStart, camera.zoom, updateFrameLayout])
 
