@@ -27,25 +27,76 @@ const SIDE_COL_WIDTH = 640
 const SIDE_Y_START = 120
 const SIDE_TOTAL_HEIGHT = 1030 // y: 120 → 1150
 const SIDE_GAP = 16
+const SIDE_Y_END = SIDE_Y_START + SIDE_TOTAL_HEIGHT
+const FRAME_MIN_H = 90 // minimum useful frame height
 
-// Auto-layout: distributes frames-without-a-stored-layout across left/right columns.
-// sideIndex is 0-based position among those auto-layout frames.
-// total is the total count of auto-layout side frames.
-const computeSideAutoLayout = (sideIndex, total) => {
-  const leftCount = Math.ceil(total / 2)
-  const rightCount = total - leftCount
-  const isLeft = sideIndex < leftCount
-  const row = isLeft ? sideIndex : sideIndex - leftCount
-  const colCount = isLeft ? leftCount : rightCount
-  const frameH = colCount > 1
-    ? Math.round((SIDE_TOTAL_HEIGHT - SIDE_GAP * (colCount - 1)) / colCount)
-    : Math.min(360, SIDE_TOTAL_HEIGHT)
-  return {
-    x: isLeft ? SIDE_COL_LEFT_X : SIDE_COL_RIGHT_X,
-    y: SIDE_Y_START + row * (frameH + SIDE_GAP),
-    width: SIDE_COL_WIDTH,
-    height: frameH,
+// Returns free vertical ranges in a column that are not occupied by stored-layout frames.
+const getColumnFreeSlots = (colX, storedSideFrames) => {
+  const inCol = storedSideFrames
+    .filter(f => f.layout.x < colX + SIDE_COL_WIDTH && f.layout.x + (f.layout.width || SIDE_COL_WIDTH) > colX)
+    .map(f => ({ y: f.layout.y, bottom: f.layout.y + (f.layout.height || 360) }))
+    .sort((a, b) => a.y - b.y)
+
+  const slots = []
+  let cursor = SIDE_Y_START
+  for (const occ of inCol) {
+    const available = occ.y - cursor - SIDE_GAP
+    if (available >= FRAME_MIN_H) slots.push({ y: cursor, height: available })
+    cursor = Math.max(cursor, occ.bottom + SIDE_GAP)
   }
+  const tail = SIDE_Y_END - cursor
+  if (tail >= FRAME_MIN_H) slots.push({ y: cursor, height: tail })
+  return slots
+}
+
+// Distribute `count` frames into vertical slots within a column.
+const distributeInSlots = (slots, count, colX) => {
+  if (count === 0) return []
+  const totalH = slots.reduce((s, r) => s + r.height, 0)
+  const frameH = totalH > 0
+    ? Math.max(FRAME_MIN_H, Math.round((totalH - SIDE_GAP * Math.max(0, count - 1)) / count))
+    : 360
+  const layouts = []
+  let rem = count
+  for (const slot of slots) {
+    if (rem <= 0) break
+    let y = slot.y
+    while (rem > 0 && y + FRAME_MIN_H <= slot.y + slot.height) {
+      layouts.push({ x: colX, y, width: SIDE_COL_WIDTH, height: Math.min(frameH, slot.y + slot.height - y) })
+      y += frameH + SIDE_GAP
+      rem--
+    }
+  }
+  // Fallback: if slots didn't fit all, stack with overlap at bottom
+  while (rem > 0) {
+    const last = layouts[layouts.length - 1]
+    const y = last ? last.y + last.height + SIDE_GAP : SIDE_Y_START
+    layouts.push({ x: colX, y, width: SIDE_COL_WIDTH, height: 360 })
+    rem--
+  }
+  return layouts
+}
+
+// Intelligent auto-layout: places frames-without-stored-layouts into free space,
+// distributing proportionally between left and right columns to avoid overlaps.
+const computeIntelligentAutoLayouts = (frames) => {
+  const storedSide = frames.filter((f, i) => i > 0 && f.layout)
+  const leftSlots = getColumnFreeSlots(SIDE_COL_LEFT_X, storedSide)
+  const rightSlots = getColumnFreeSlots(SIDE_COL_RIGHT_X, storedSide)
+  const leftFree = leftSlots.reduce((s, r) => s + r.height, 0)
+  const rightFree = rightSlots.reduce((s, r) => s + r.height, 0)
+  const totalFree = leftFree + rightFree
+
+  const autoCount = frames.filter((f, i) => i > 0 && !f.layout).length
+  if (autoCount === 0) return []
+
+  const leftN = totalFree > 0 ? Math.round(autoCount * leftFree / totalFree) : Math.ceil(autoCount / 2)
+  const rightN = autoCount - leftN
+
+  return [
+    ...distributeInSlots(leftSlots, leftN, SIDE_COL_LEFT_X),
+    ...distributeInSlots(rightSlots, rightN, SIDE_COL_RIGHT_X),
+  ]
 }
 const templateRuntimeCache = new Map()
 const NEW_PROJECT_BG_KEY = 'adityanta_new_project_bg'
@@ -581,25 +632,18 @@ const EditorPage = () => {
   const [draggingFrameId, setDraggingFrameId] = useState(null)
   const [frameDragStart, setFrameDragStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0 })
 
-  const frameMapLayout = useMemo(() => {
-    // Count how many side frames (index > 0) need auto-layout (no stored position)
-    let autoCount = 0
-    for (let i = 1; i < frames.length; i++) {
-      if (!frames[i].layout) autoCount++
-    }
+  // Frame resize state
+  const [isResizingFrame, setIsResizingFrame] = useState(false)
+  const [frameResizeHandle, setFrameResizeHandle] = useState(null)
+  const [frameResizeStart, setFrameResizeStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0, frameW: 0, frameH: 0, frameId: null })
 
+  const frameMapLayout = useMemo(() => {
+    const autoLayouts = computeIntelligentAutoLayouts(frames)
     let autoIndex = 0
     return frames.map((frame, index) => {
-      // Always honour a manually stored layout (drag-to-reposition)
       if (frame.layout) return { id: frame.id, ...frame.layout }
-
-      if (index === 0) {
-        // Overview frame: fixed at its preset position
-        return { id: frame.id, ...PREZI_LAYOUT_PRESETS[0] }
-      }
-
-      // Side frame without a stored layout: fit within the fixed background area
-      const layout = computeSideAutoLayout(autoIndex, autoCount)
+      if (index === 0) return { id: frame.id, ...PREZI_LAYOUT_PRESETS[0] }
+      const layout = autoLayouts[autoIndex] || { x: SIDE_COL_LEFT_X, y: SIDE_Y_START + autoIndex * (300 + SIDE_GAP), width: SIDE_COL_WIDTH, height: 300 }
       autoIndex++
       return { id: frame.id, ...layout }
     })
@@ -1310,6 +1354,54 @@ const EditorPage = () => {
     setDraggingFrameId(null)
   }, [])
 
+  const handleFrameResizeStart = (e, handle, frameBox) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    e.preventDefault()
+    setIsResizingFrame(true)
+    setFrameResizeHandle(handle)
+    setFrameResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      frameX: frameBox.x,
+      frameY: frameBox.y,
+      frameW: frameBox.width,
+      frameH: frameBox.height,
+      frameId: frameBox.id,
+    })
+  }
+
+  const handleFrameResizeMove = useCallback((e) => {
+    if (!isResizingFrame || !frameResizeHandle) return
+    const dx = (e.clientX - frameResizeStart.x) / camera.zoom
+    const dy = (e.clientY - frameResizeStart.y) / camera.zoom
+    const MIN = 160
+
+    let x = frameResizeStart.frameX
+    let y = frameResizeStart.frameY
+    let w = frameResizeStart.frameW
+    let h = frameResizeStart.frameH
+
+    if (frameResizeHandle.includes('e')) w = Math.max(MIN, w + dx)
+    if (frameResizeHandle.includes('s')) h = Math.max(MIN, h + dy)
+    if (frameResizeHandle.includes('w')) {
+      const d = Math.min(dx, w - MIN)
+      x = x + d; w = w - d
+    }
+    if (frameResizeHandle.includes('n')) {
+      const d = Math.min(dy, h - MIN)
+      y = y + d; h = h - d
+    }
+
+    updateFrameLayout(frameResizeStart.frameId, { x, y, width: Math.round(w), height: Math.round(h) })
+  }, [isResizingFrame, frameResizeHandle, frameResizeStart, camera.zoom, updateFrameLayout])
+
+  const handleFrameResizeEnd = useCallback(() => {
+    setIsResizingFrame(false)
+    setFrameResizeHandle(null)
+    commitHistory()
+  }, [commitHistory])
+
 
   const handleDragStart = (e, element) => {
     if (editingTextId === element.id) return
@@ -1390,32 +1482,20 @@ const EditorPage = () => {
   // Mouse move/up for drag and resize
   useEffect(() => {
     const handleMouseMove = (e) => {
-      if (isDragging) {
-        handleDragMove(e)
-      }
-      if (isResizing) {
-        handleResizeMove(e)
-      }
-      if (draggingFrameId) {
-        handleFrameDragMove(e)
-      }
+      if (isDragging) handleDragMove(e)
+      if (isResizing) handleResizeMove(e)
+      if (draggingFrameId) handleFrameDragMove(e)
+      if (isResizingFrame) handleFrameResizeMove(e)
     }
 
     const handleMouseUp = () => {
-      if (isDragging) {
-        handleDragEnd()
-        commitHistory() // Commit drag to history
-      }
-      if (isResizing) {
-        handleResizeEnd()
-      }
-      if (draggingFrameId) {
-        handleFrameDragEnd()
-        commitHistory() // Commit resize to history
-      }
+      if (isDragging) { handleDragEnd(); commitHistory() }
+      if (isResizing) handleResizeEnd()
+      if (draggingFrameId) { handleFrameDragEnd(); commitHistory() }
+      if (isResizingFrame) handleFrameResizeEnd()
     }
 
-    if (isDragging || isResizing || draggingFrameId) {
+    if (isDragging || isResizing || draggingFrameId || isResizingFrame) {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
       return () => {
@@ -1423,7 +1503,7 @@ const EditorPage = () => {
         document.removeEventListener('mouseup', handleMouseUp)
       }
     }
-  }, [isDragging, isResizing, handleDragMove, handleDragEnd, handleResizeMove, handleResizeEnd, handleFrameDragMove, handleFrameDragEnd, draggingFrameId])
+  }, [isDragging, isResizing, handleDragMove, handleDragEnd, handleResizeMove, handleResizeEnd, handleFrameDragMove, handleFrameDragEnd, draggingFrameId, isResizingFrame, handleFrameResizeMove, handleFrameResizeEnd])
 
   // Handle text content change
   const handleTextChange = (elementId, newContent) => {
@@ -3587,35 +3667,41 @@ const EditorPage = () => {
                 const frameData = frames.find(f => f.id === frameBox.id)
                 const frameElements = selected ? elements : (frameData?.elements || [])
                 const isOverviewFrame = frameData?.preview === 'Overview'
+                // Resize cursor for the active frame border area
+                const frameCursor = isOverviewFrame ? 'default' : (draggingFrameId === frameBox.id ? 'grabbing' : 'grab')
                 return (
+                  // Outer wrapper: no overflow-clip, holds resize handles
                   <div
                     key={frameBox.id}
-                    onClick={() => handleFrameFocus(frameBox.id, 'frame')} onMouseDown={(e) => handleFrameDragStart(e, frameBox)}
-                    className="absolute cursor-pointer"
-                    style={{
-                      left: frameBox.x,
-                      top: frameBox.y,
-                      width: frameBox.width,
-                      height: frameBox.height,
-                      border: isOverviewFrame
-                        ? 'none'
-                        : (selected ? '2px solid #1a73e8' : '1px solid #e5e7eb'),
-                      borderRadius: isOverviewFrame ? '20px' : '16px',
-                      background: isOverviewFrame
-                        ? 'transparent'
-                        : (frameData?.backgroundImage
-                          ? `url("${frameData.backgroundImage}") center/cover no-repeat`
-                          : (editorBgImage && (!frameData?.backgroundColor || frameData.backgroundColor === '#ffffff')
-                            ? 'transparent'
-                            : (frameData?.backgroundColor || 'transparent'))),
-                      boxShadow: isOverviewFrame
-                        ? 'none'
-                        : (selected ? '0 14px 40px rgba(15, 23, 42, 0.18)' : '0 8px 24px rgba(15, 23, 42, 0.12)'),
-                      overflow: 'hidden',
-                      transition: 'all 0.2s ease',
-                    }}
-                    title={`Frame ${frameIdx + 1}`}
+                    className="absolute"
+                    style={{ left: frameBox.x, top: frameBox.y, width: frameBox.width, height: frameBox.height, zIndex: selected ? 10 : 1 }}
                   >
+                    {/* Inner frame: clip content, handle click/drag */}
+                    <div
+                      onClick={() => handleFrameFocus(frameBox.id, 'frame')}
+                      onMouseDown={(e) => { if (!isResizingFrame) handleFrameDragStart(e, frameBox) }}
+                      className="absolute inset-0"
+                      style={{
+                        cursor: frameCursor,
+                        border: isOverviewFrame
+                          ? 'none'
+                          : (selected ? '2px solid #1a73e8' : '1px solid #e5e7eb'),
+                        borderRadius: isOverviewFrame ? '20px' : '16px',
+                        background: isOverviewFrame
+                          ? 'transparent'
+                          : (frameData?.backgroundImage
+                            ? `url("${frameData.backgroundImage}") center/cover no-repeat`
+                            : (editorBgImage && (!frameData?.backgroundColor || frameData.backgroundColor === '#ffffff')
+                              ? 'transparent'
+                              : (frameData?.backgroundColor || 'transparent'))),
+                        boxShadow: isOverviewFrame
+                          ? 'none'
+                          : (selected ? '0 14px 40px rgba(15, 23, 42, 0.18)' : '0 8px 24px rgba(15, 23, 42, 0.12)'),
+                        overflow: 'hidden',
+                        transition: 'border 0.15s, box-shadow 0.15s',
+                      }}
+                      title={`Frame ${frameIdx + 1}`}
+                    >
                     <div style={{
                       width: SLIDE_WIDTH,
                       height: SLIDE_HEIGHT,
@@ -3678,6 +3764,23 @@ const EditorPage = () => {
                         </div>
                       ))}
                     </div>
+                    </div>
+
+                    {/* Frame resize handles — only on selected non-overview frames */}
+                    {selected && !isOverviewFrame && (
+                      <>
+                        {/* Corners */}
+                        <div className="absolute -top-2 -left-2 w-4 h-4 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-nw-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'nw', frameBox)} />
+                        <div className="absolute -top-2 -right-2 w-4 h-4 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-ne-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'ne', frameBox)} />
+                        <div className="absolute -bottom-2 -left-2 w-4 h-4 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-sw-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'sw', frameBox)} />
+                        <div className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-se-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'se', frameBox)} />
+                        {/* Edges */}
+                        <div className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-3 h-8 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-w-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'w', frameBox)} />
+                        <div className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3 h-8 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-e-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'e', frameBox)} />
+                        <div className="absolute left-1/2 -translate-x-1/2 -top-1.5 h-3 w-8 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-n-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'n', frameBox)} />
+                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 h-3 w-8 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-s-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 's', frameBox)} />
+                      </>
+                    )}
                   </div>
                 )
               })}

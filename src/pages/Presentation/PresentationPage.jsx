@@ -18,21 +18,63 @@ const SIDE_COL_WIDTH = 640
 const SIDE_Y_START = 120
 const SIDE_TOTAL_HEIGHT = 1030
 const SIDE_GAP = 16
+const SIDE_Y_END = SIDE_Y_START + SIDE_TOTAL_HEIGHT
+const FRAME_MIN_H = 90
 
-const computeSideAutoLayout = (sideIndex, total) => {
-  const leftCount = Math.ceil(total / 2)
-  const isLeft = sideIndex < leftCount
-  const row = isLeft ? sideIndex : sideIndex - leftCount
-  const colCount = isLeft ? leftCount : total - leftCount
-  const frameH = colCount > 1
-    ? Math.round((SIDE_TOTAL_HEIGHT - SIDE_GAP * (colCount - 1)) / colCount)
-    : Math.min(360, SIDE_TOTAL_HEIGHT)
-  return {
-    x: isLeft ? SIDE_COL_LEFT_X : SIDE_COL_RIGHT_X,
-    y: SIDE_Y_START + row * (frameH + SIDE_GAP),
-    width: SIDE_COL_WIDTH,
-    height: frameH,
+const getColumnFreeSlots = (colX, storedSideFrames) => {
+  const inCol = storedSideFrames
+    .filter(f => f.layout.x < colX + SIDE_COL_WIDTH && f.layout.x + (f.layout.width || SIDE_COL_WIDTH) > colX)
+    .map(f => ({ y: f.layout.y, bottom: f.layout.y + (f.layout.height || 360) }))
+    .sort((a, b) => a.y - b.y)
+  const slots = []
+  let cursor = SIDE_Y_START
+  for (const occ of inCol) {
+    const available = occ.y - cursor - SIDE_GAP
+    if (available >= FRAME_MIN_H) slots.push({ y: cursor, height: available })
+    cursor = Math.max(cursor, occ.bottom + SIDE_GAP)
   }
+  const tail = SIDE_Y_END - cursor
+  if (tail >= FRAME_MIN_H) slots.push({ y: cursor, height: tail })
+  return slots
+}
+
+const distributeInSlots = (slots, count, colX) => {
+  if (count === 0) return []
+  const totalH = slots.reduce((s, r) => s + r.height, 0)
+  const frameH = totalH > 0 ? Math.max(FRAME_MIN_H, Math.round((totalH - SIDE_GAP * Math.max(0, count - 1)) / count)) : 360
+  const layouts = []
+  let rem = count
+  for (const slot of slots) {
+    if (rem <= 0) break
+    let y = slot.y
+    while (rem > 0 && y + FRAME_MIN_H <= slot.y + slot.height) {
+      layouts.push({ x: colX, y, width: SIDE_COL_WIDTH, height: Math.min(frameH, slot.y + slot.height - y) })
+      y += frameH + SIDE_GAP
+      rem--
+    }
+  }
+  while (rem > 0) {
+    const last = layouts[layouts.length - 1]
+    layouts.push({ x: colX, y: last ? last.y + last.height + SIDE_GAP : SIDE_Y_START, width: SIDE_COL_WIDTH, height: 360 })
+    rem--
+  }
+  return layouts
+}
+
+const computeIntelligentAutoLayouts = (frames) => {
+  const storedSide = frames.filter((f, i) => i > 0 && f.layout)
+  const leftSlots = getColumnFreeSlots(SIDE_COL_LEFT_X, storedSide)
+  const rightSlots = getColumnFreeSlots(SIDE_COL_RIGHT_X, storedSide)
+  const leftFree = leftSlots.reduce((s, r) => s + r.height, 0)
+  const rightFree = rightSlots.reduce((s, r) => s + r.height, 0)
+  const totalFree = leftFree + rightFree
+  const autoCount = frames.filter((f, i) => i > 0 && !f.layout).length
+  if (autoCount === 0) return []
+  const leftN = totalFree > 0 ? Math.round(autoCount * leftFree / totalFree) : Math.ceil(autoCount / 2)
+  return [
+    ...distributeInSlots(leftSlots, leftN, SIDE_COL_LEFT_X),
+    ...distributeInSlots(rightSlots, autoCount - leftN, SIDE_COL_RIGHT_X),
+  ]
 }
 
 const buildInterFrameConnectors = (layout) => {
@@ -443,15 +485,12 @@ const PresentationPage = () => {
   }
 
     const frameMapLayout = useMemo(() => {
-    let autoCount = 0
-    for (let i = 1; i < frames.length; i++) {
-      if (!frames[i].layout) autoCount++
-    }
+    const autoLayouts = computeIntelligentAutoLayouts(frames)
     let autoIndex = 0
     return frames.map((frame, index) => {
       if (frame.layout) return { id: frame.id, ...frame.layout }
       if (index === 0) return { id: frame.id, ...PREZI_LAYOUT_PRESETS[0] }
-      const layout = computeSideAutoLayout(autoIndex, autoCount)
+      const layout = autoLayouts[autoIndex] || { x: SIDE_COL_LEFT_X, y: SIDE_Y_START + autoIndex * (300 + SIDE_GAP), width: SIDE_COL_WIDTH, height: 300 }
       autoIndex++
       return { id: frame.id, ...layout }
     })
