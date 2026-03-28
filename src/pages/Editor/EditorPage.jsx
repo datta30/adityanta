@@ -19,6 +19,34 @@ import backgroundData from '../../utils/backgroundData.json'
 const SLIDE_WIDTH = 1280
 const SLIDE_HEIGHT = 720
 const WORLD_PADDING = 220
+
+// Fixed side-column dimensions derived from PREZI_LAYOUT_PRESETS (never change)
+const SIDE_COL_LEFT_X = 60
+const SIDE_COL_RIGHT_X = 2260
+const SIDE_COL_WIDTH = 640
+const SIDE_Y_START = 120
+const SIDE_TOTAL_HEIGHT = 1030 // y: 120 → 1150
+const SIDE_GAP = 16
+
+// Auto-layout: distributes frames-without-a-stored-layout across left/right columns.
+// sideIndex is 0-based position among those auto-layout frames.
+// total is the total count of auto-layout side frames.
+const computeSideAutoLayout = (sideIndex, total) => {
+  const leftCount = Math.ceil(total / 2)
+  const rightCount = total - leftCount
+  const isLeft = sideIndex < leftCount
+  const row = isLeft ? sideIndex : sideIndex - leftCount
+  const colCount = isLeft ? leftCount : rightCount
+  const frameH = colCount > 1
+    ? Math.round((SIDE_TOTAL_HEIGHT - SIDE_GAP * (colCount - 1)) / colCount)
+    : Math.min(360, SIDE_TOTAL_HEIGHT)
+  return {
+    x: isLeft ? SIDE_COL_LEFT_X : SIDE_COL_RIGHT_X,
+    y: SIDE_Y_START + row * (frameH + SIDE_GAP),
+    width: SIDE_COL_WIDTH,
+    height: frameH,
+  }
+}
 const templateRuntimeCache = new Map()
 const NEW_PROJECT_BG_KEY = 'adityanta_new_project_bg'
 const PREZI_LAYOUT_PRESETS = [
@@ -554,24 +582,26 @@ const EditorPage = () => {
   const [frameDragStart, setFrameDragStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0 })
 
   const frameMapLayout = useMemo(() => {
-    const presets = PREZI_LAYOUT_PRESETS
+    // Count how many side frames (index > 0) need auto-layout (no stored position)
+    let autoCount = 0
+    for (let i = 1; i < frames.length; i++) {
+      if (!frames[i].layout) autoCount++
+    }
 
-    let rightMost = 0
+    let autoIndex = 0
     return frames.map((frame, index) => {
-      // Prefer stored layout from frame.layout, then preset, then default
-      const stored = frame.layout
-      const p = stored || presets[index]
-      let next
-      if (p) {
-        next = { ...p }
-      } else {
-        next = { width: 640, height: 360, x: rightMost + 60, y: 0 }
+      // Always honour a manually stored layout (drag-to-reposition)
+      if (frame.layout) return { id: frame.id, ...frame.layout }
+
+      if (index === 0) {
+        // Overview frame: fixed at its preset position
+        return { id: frame.id, ...PREZI_LAYOUT_PRESETS[0] }
       }
-      rightMost = Math.max(rightMost, next.x + next.width)
-      return {
-        id: frame.id,
-        ...next,
-      }
+
+      // Side frame without a stored layout: fit within the fixed background area
+      const layout = computeSideAutoLayout(autoIndex, autoCount)
+      autoIndex++
+      return { id: frame.id, ...layout }
     })
   }, [frames])
 
@@ -597,20 +627,22 @@ const EditorPage = () => {
 
   const activeFrameLayout = frameMapLayout.find((f) => f.id === activeFrameId) || { x: 400, y: 200, width: 640, height: 400 }
 
+  // Background bounds are FIXED — always based on the initial PREZI_LAYOUT_PRESETS,
+  // so the background image never grows when new frames are added.
   const frameBackgroundBounds = useMemo(() => {
-    if (!frameMapLayout.length) return null
-    const minX = Math.min(...frameMapLayout.map((f) => f.x))
-    const minY = Math.min(...frameMapLayout.map((f) => f.y))
-    const maxX = Math.max(...frameMapLayout.map((f) => f.x + f.width))
-    const maxY = Math.max(...frameMapLayout.map((f) => f.y + f.height))
+    if (!frames.length) return null
     const padding = 40
+    const minX = Math.min(...PREZI_LAYOUT_PRESETS.map((p) => p.x))
+    const minY = Math.min(...PREZI_LAYOUT_PRESETS.map((p) => p.y))
+    const maxX = Math.max(...PREZI_LAYOUT_PRESETS.map((p) => p.x + p.width))
+    const maxY = Math.max(...PREZI_LAYOUT_PRESETS.map((p) => p.y + p.height))
     return {
       x: minX - padding,
       y: minY - padding,
-      width: (maxX - minX) + (padding * 2),
-      height: (maxY - minY) + (padding * 2),
+      width: (maxX - minX) + padding * 2,
+      height: (maxY - minY) + padding * 2,
     }
-  }, [frameMapLayout])
+  }, [frames.length])
 
   // Ensure frames are always initialized - safety fallback
   useEffect(() => {

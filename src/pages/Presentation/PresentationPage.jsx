@@ -12,6 +12,29 @@ const PREZI_LAYOUT_PRESETS = [
 ]
 const PREZI_FLOW_ORDER = [1, 2, 0, 3, 4]
 
+const SIDE_COL_LEFT_X = 60
+const SIDE_COL_RIGHT_X = 2260
+const SIDE_COL_WIDTH = 640
+const SIDE_Y_START = 120
+const SIDE_TOTAL_HEIGHT = 1030
+const SIDE_GAP = 16
+
+const computeSideAutoLayout = (sideIndex, total) => {
+  const leftCount = Math.ceil(total / 2)
+  const isLeft = sideIndex < leftCount
+  const row = isLeft ? sideIndex : sideIndex - leftCount
+  const colCount = isLeft ? leftCount : total - leftCount
+  const frameH = colCount > 1
+    ? Math.round((SIDE_TOTAL_HEIGHT - SIDE_GAP * (colCount - 1)) / colCount)
+    : Math.min(360, SIDE_TOTAL_HEIGHT)
+  return {
+    x: isLeft ? SIDE_COL_LEFT_X : SIDE_COL_RIGHT_X,
+    y: SIDE_Y_START + row * (frameH + SIDE_GAP),
+    width: SIDE_COL_WIDTH,
+    height: frameH,
+  }
+}
+
 const buildInterFrameConnectors = (layout) => {
   if (!Array.isArray(layout) || layout.length < 2) return []
   const order = (layout.length >= 5
@@ -420,23 +443,17 @@ const PresentationPage = () => {
   }
 
     const frameMapLayout = useMemo(() => {
-    const presets = PREZI_LAYOUT_PRESETS
-
-    let rightMost = 0
+    let autoCount = 0
+    for (let i = 1; i < frames.length; i++) {
+      if (!frames[i].layout) autoCount++
+    }
+    let autoIndex = 0
     return frames.map((frame, index) => {
       if (frame.layout) return { id: frame.id, ...frame.layout }
-      const p = presets[index]
-      let next
-      if (p) {
-        next = { ...p }
-      } else {
-        next = { width: 640, height: 360, x: rightMost + 60, y: 0 }
-      }
-      rightMost = Math.max(rightMost, next.x + next.width)
-      return {
-        id: frame.id,
-        ...next,
-      }
+      if (index === 0) return { id: frame.id, ...PREZI_LAYOUT_PRESETS[0] }
+      const layout = computeSideAutoLayout(autoIndex, autoCount)
+      autoIndex++
+      return { id: frame.id, ...layout }
     })
   }, [frames])
 
