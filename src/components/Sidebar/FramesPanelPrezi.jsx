@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react'
+import { memo, useMemo, useState, useRef } from 'react'
 import { PREZI_FRAME_TEMPLATES } from '../../utils/templateData'
 
 const MiniCanvasPreview = memo(({ frame }) => {
@@ -81,11 +81,41 @@ const FramesPanelPrezi = ({
   addNewFrame,
   deleteFrame,
   duplicateFrame,
+  reorderFrames,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
+  const dragIndexRef = useRef(null)
 
   const activeIndex = useMemo(() => frames.findIndex((f) => f.id === activeFrame), [frames, activeFrame])
+
+  const handleDragStart = (e, index) => {
+    dragIndexRef.current = index
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(index))
+  }
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (index !== dragIndexRef.current) setDragOverIndex(index)
+  }
+
+  const handleDrop = (e, toIndex) => {
+    e.preventDefault()
+    const fromIndex = dragIndexRef.current
+    if (fromIndex !== null && fromIndex !== toIndex) {
+      reorderFrames(fromIndex, toIndex)
+    }
+    dragIndexRef.current = null
+    setDragOverIndex(null)
+  }
+
+  const handleDragEnd = () => {
+    dragIndexRef.current = null
+    setDragOverIndex(null)
+  }
 
   const handleAddFrame = (templateId) => {
     addNewFrame(templateId)
@@ -153,18 +183,27 @@ const FramesPanelPrezi = ({
         {frames.map((frame, index) => {
           if (index === 0) return null
           const isActive = activeFrame === frame.id
+          const isDragTarget = dragOverIndex === index
           return (
             <div
               key={frame.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDrop={(e) => handleDrop(e, index)}
+              onDragEnd={handleDragEnd}
               onClick={() => setActiveFrame(frame.id, 'frame')}
-              className={`group cursor-pointer rounded-xl p-2 border-2 transition-all ${
+              className={`group cursor-grab active:cursor-grabbing rounded-xl p-2 border-2 transition-all ${
                 isActive ? 'border-[#3dba4e] bg-green-50/50' : 'border-gray-200 hover:border-gray-300'
-              }`}
+              } ${isDragTarget ? 'ring-2 ring-[#3dba4e] ring-offset-1 scale-[0.98]' : ''}`}
               style={isActive ? { borderWidth: '3px' } : undefined}
             >
               <div className="flex items-start gap-2">
-                <div className="mt-1 w-6 h-6 rounded-full bg-gray-100 text-gray-700 text-xs font-bold flex items-center justify-center">
-                  {index}
+                <div className="flex flex-col items-center gap-1">
+                  <div className="mt-1 w-6 h-6 rounded-full bg-gray-100 text-gray-700 text-xs font-bold flex items-center justify-center">
+                    {index}
+                  </div>
+                  <div className="text-gray-300 text-[10px] leading-none select-none">⠿</div>
                 </div>
 
                 <div className="flex-1">
