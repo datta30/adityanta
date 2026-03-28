@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useRef } from 'react'
+import { memo, useMemo, useState, useRef, useEffect } from 'react'
 import { PREZI_FRAME_TEMPLATES } from '../../utils/templateData'
 
 const MiniCanvasPreview = memo(({ frame }) => {
@@ -86,7 +86,20 @@ const FramesPanelPrezi = ({
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
   const [dragOverIndex, setDragOverIndex] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const dragIndexRef = useRef(null)
+  const templatePickerRef = useRef(null)
+
+  // Close template picker on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (templatePickerRef.current && !templatePickerRef.current.contains(e.target)) {
+        setShowTemplatePicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const activeIndex = useMemo(() => frames.findIndex((f) => f.id === activeFrame), [frames, activeFrame])
 
@@ -139,7 +152,7 @@ const FramesPanelPrezi = ({
   return (
     <aside className="relative w-72 bg-white border-r border-gray-200 flex flex-col transition-all duration-200">
       <div className="p-3 border-b border-gray-100">
-        <div className="relative">
+        <div className="relative" ref={templatePickerRef}>
           <button
             onClick={() => setShowTemplatePicker((v) => !v)}
             className="w-full h-11 bg-[#3dba4e] hover:bg-[#34a745] text-white rounded-md px-3 flex items-center justify-between font-semibold transition-all"
@@ -221,28 +234,32 @@ const FramesPanelPrezi = ({
                 </div>
               </div>
 
-              <div className="mt-1 hidden group-hover:flex justify-end gap-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    duplicateFrame(frame.id)
-                  }}
-                  className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
-                >
-                  Duplicate
-                </button>
-                {frames.length > 1 && (
+              {confirmDeleteId === frame.id ? (
+                <div className="mt-1 flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                  <span className="text-[11px] text-gray-500">Delete frame?</span>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteFrame(frame.id)
-                    }}
-                    className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 transition-all"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
+                    onClick={(e) => { e.stopPropagation(); deleteFrame(frame.id) }}
+                    className="text-[11px] px-2 py-1 rounded border border-red-300 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-semibold"
+                  >Yes</button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                    className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
+                  >No</button>
+                </div>
+              ) : (
+                <div className="mt-1 hidden group-hover:flex justify-end gap-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); duplicateFrame(frame.id) }}
+                    className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
+                  >Duplicate</button>
+                  {frames.length > 1 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(frame.id) }}
+                      className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 transition-all"
+                    >Delete</button>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}

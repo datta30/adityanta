@@ -23,13 +23,11 @@ const EditorToolbar = ({
     { id: 'redo', label: 'Redo', icon: 'redo', action: onRedo, disabled: !canRedo, isIconOnly: true, title: 'Redo (Ctrl+Y)' },
     { id: 'saveCloud', label: 'Save', icon: 'saveCloud', action: onSave, isIconOnly: true, title: 'Save (Ctrl+S)' },
     { id: 'divider', isDivider: true },
-    { id: 'style', label: 'Style', icon: 'style' },
     { id: 'text', label: 'Text', icon: 'text', action: onAddText },
     { id: 'media', label: 'Media', icon: 'media', hasDropdown: true },
     { id: 'shape', label: 'Shape', icon: 'shape', action: onAddShape },
-    { id: 'storyBlock', label: 'Story block', icon: 'storyBlock', action: onAddTable },
-    { id: 'animation', label: 'Animation', icon: 'animation', action: onAddIcon },
-    { id: 'more', label: 'More', icon: 'more' },
+    { id: 'storyBlock', label: 'Table', icon: 'storyBlock', action: onAddTable },
+    { id: 'icons', label: 'Icons', icon: 'icons', action: onAddIcon },
   ]
 
   const mediaOptions = [

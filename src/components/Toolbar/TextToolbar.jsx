@@ -18,6 +18,7 @@ const SPEED_OPTIONS = [
 
 const TextToolbar = ({ element, onUpdate, onAnimationChange }) => {
   const [showFontDropdown, setShowFontDropdown] = useState(false)
+  const [fontSearch, setFontSearch] = useState('')
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [showSizeDropdown, setShowSizeDropdown] = useState(false)
   const [showBorderOptions, setShowBorderOptions] = useState(false)
@@ -143,7 +144,12 @@ const TextToolbar = ({ element, onUpdate, onAnimationChange }) => {
   const handleFontChange = (font) => {
     onUpdate({ fontFamily: font })
     setShowFontDropdown(false)
+    setFontSearch('')
   }
+
+  const filteredFonts = fontSearch.trim()
+    ? fonts.filter(f => f.toLowerCase().includes(fontSearch.toLowerCase()))
+    : fonts
 
   const toggleBold = () => {
     onUpdate({ fontWeight: isBold ? 'normal' : 'bold' })
@@ -191,18 +197,33 @@ const TextToolbar = ({ element, onUpdate, onAnimationChange }) => {
           </svg>
         </button>
         {showFontDropdown && (
-          <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20 min-w-[160px] max-h-64 overflow-y-auto">
-            {fonts.map((font) => (
-              <button
-                key={font}
-                onClick={() => handleFontChange(font)}
-                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${currentFont === font ? 'text-primary font-medium bg-primary/5' : 'text-gray-700'
-                  }`}
-                style={{ fontFamily: font }}
-              >
-                {font}
-              </button>
-            ))}
+          <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[200px]">
+            <div className="p-2 border-b border-gray-100">
+              <input
+                type="text"
+                value={fontSearch}
+                onChange={(e) => setFontSearch(e.target.value)}
+                placeholder="Search fonts…"
+                className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded focus:outline-none focus:border-primary"
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+            <div className="max-h-56 overflow-y-auto py-1">
+              {filteredFonts.length === 0 && (
+                <div className="px-3 py-4 text-sm text-gray-400 text-center">No fonts found</div>
+              )}
+              {filteredFonts.map((font) => (
+                <button
+                  key={font}
+                  onClick={() => handleFontChange(font)}
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${currentFont === font ? 'text-primary font-medium bg-primary/5' : 'text-gray-700'}`}
+                  style={{ fontFamily: font }}
+                >
+                  {font}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

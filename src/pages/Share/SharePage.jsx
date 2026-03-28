@@ -124,6 +124,27 @@ const SharePage = () => {
     }
   }
 
+  // Keyboard navigation
+  useEffect(() => {
+    if (!presentation) return
+    const total = presentation.frames?.length || 0
+    const handler = (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') {
+        e.preventDefault()
+        setCurrentSlide(s => Math.min(total - 1, s + 1))
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setCurrentSlide(s => Math.max(0, s - 1))
+      } else if (e.key === 'Home') {
+        setCurrentSlide(0)
+      } else if (e.key === 'End') {
+        setCurrentSlide(total - 1)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [presentation])
+
   const handlePresent = () => {
     if (!presentation) return
     // Load shared frames into EditorContext directly — avoids overwriting the owner's autosave
@@ -209,6 +230,7 @@ const SharePage = () => {
           <button
             onClick={() => setCurrentSlide(Math.max(0, currentSlide - 1))}
             disabled={currentSlide === 0}
+            aria-label="Previous slide"
             className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -229,6 +251,7 @@ const SharePage = () => {
           <button
             onClick={() => setCurrentSlide(Math.min((presentation?.frames?.length || 1) - 1, currentSlide + 1))}
             disabled={currentSlide === (presentation?.frames?.length || 1) - 1}
+            aria-label="Next slide"
             className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
