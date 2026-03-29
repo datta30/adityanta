@@ -190,7 +190,7 @@ const FramesPanelPrezi = ({
           style={activeIndex === 0 ? { borderWidth: '3px' } : undefined}
         >
           <MiniCanvasPreview frame={frames[0]} />
-          <div className="mt-2 text-sm font-semibold text-gray-700 text-center">Overview</div>
+          <div className="mt-2 text-sm font-semibold text-gray-700 text-center truncate px-2" title={frames[0]?.title || 'Overview'}>{frames[0]?.title || 'Overview'}</div>
         </button>
 
         {frames.map((frame, index) => {
@@ -228,8 +228,8 @@ const FramesPanelPrezi = ({
                   </div>
 
                   <div className="mt-1.5 flex items-center justify-between">
-                    <p className="text-xs font-bold text-gray-700">Zoom to Frame</p>
-                    <span className="text-gray-500 text-sm">»</span>
+                    <p className="text-xs font-bold text-gray-700 truncate mr-2" title={frame.title || 'Zoom to Frame'}>{frame.title || 'Zoom to Frame'}</p>
+                    <span className="text-gray-500 text-sm flex-shrink-0">»</span>
                   </div>
                 </div>
               </div>

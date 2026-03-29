@@ -773,7 +773,7 @@ const PresentationPage = () => {
         </div>
       )}
 
-      {showNotes && hasStarted && frames[currentSlideIndex]?.notes && (
+      {showNotes && hasStarted && (
         <div className="absolute top-8 right-8 w-80 bg-gray-900/90 backdrop-blur-md rounded-xl p-5 shadow-2xl text-white z-50 animate-fade-in border border-white/10">
           <div className="flex justify-between items-center mb-3 pb-2 border-b border-white/20">
             <h3 className="font-semibold flex items-center gap-2">
@@ -789,7 +789,7 @@ const PresentationPage = () => {
             </button>
           </div>
           <div className="text-gray-200 text-sm whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-            {frames[currentSlideIndex].notes}
+            {frames[currentSlideIndex]?.notes || <span className='text-gray-500 italic'>No speaker notes for this frame.</span>}
           </div>
         </div>
       )}
