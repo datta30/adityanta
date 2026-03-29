@@ -490,6 +490,10 @@ const EditorPage = () => {
   const [showSlideMaster, setShowSlideMaster] = useState(false)
   const [showAnimationPanel, setShowAnimationPanel] = useState(false)
   const [showVideoModal, setShowVideoModal] = useState(false)
+  const [showWebImageModal, setShowWebImageModal] = useState(false)
+  const [webImageQuery, setWebImageQuery] = useState('')
+  const [webImageResults, setWebImageResults] = useState([])
+  const [isSearchingWebImage, setIsSearchingWebImage] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [videoUrl, setVideoUrl] = useState('')
   const [rightPanelTab, setRightPanelTab] = useState('properties') // properties, design, notes
@@ -1764,7 +1768,9 @@ const EditorPage = () => {
                 setEditingTextId(null)
                 commitHistory() // Commit text edit to history
               }}
+              onPointerDown={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
+                e.stopPropagation()
                 // Escape to finish editing
                 if (e.key === 'Escape') {
                   e.preventDefault()
@@ -1890,7 +1896,9 @@ const EditorPage = () => {
                 value={element.content || ''}
                 onChange={(e) => handleTextChange(element.id, e.target.value)}
                 onBlur={() => setEditingTextId(null)}
+                onPointerDown={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
+                  e.stopPropagation()
                   if (e.key === 'Escape') {
                     e.preventDefault()
                     setEditingTextId(null)
@@ -1946,7 +1954,9 @@ const EditorPage = () => {
                   value={element.caption || ''}
                   onChange={(e) => updateElement(element.id, { caption: e.target.value })}
                   onBlur={() => setEditingTextId(null)}
+                  onPointerDown={(e) => e.stopPropagation()}
                   onKeyDown={(e) => {
+                    e.stopPropagation()
                     if (e.key === 'Escape') {
                       e.preventDefault()
                       setEditingTextId(null)
@@ -2464,7 +2474,9 @@ const EditorPage = () => {
                   value={element.content || ''}
                   onChange={(e) => handleTextChange(element.id, e.target.value)}
                   onBlur={() => setEditingTextId(null)}
+                  onPointerDown={(e) => e.stopPropagation()}
                   onKeyDown={(e) => {
+                    e.stopPropagation()
                     if (e.key === 'Escape') {
                       e.preventDefault()
                       setEditingTextId(null)
@@ -2667,18 +2679,43 @@ const EditorPage = () => {
             </svg>
           </button>
 
-          <input
-            type="text"
-            value={projectTitle || 'Untitled presentation'}
-            onChange={(e) => setProjectTitle(e.target.value)}
-            className="text-base font-semibold text-gray-800 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-primary/20 rounded px-1 py-1 min-w-[170px]"
-            placeholder="Untitled presentation"
-          />
+          <div className="flex items-center group relative">
+            <input
+              type="text"
+              value={projectTitle || 'Untitled presentation'}
+              onChange={(e) => setProjectTitle(e.target.value)}
+              className="text-base font-semibold text-gray-800 bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-primary/20 rounded px-1 py-1 min-w-[170px]"
+              placeholder="Untitled presentation"
+            />
+            <button
+              onClick={() => {
+                const adjectives = ['Creative', 'Brilliant', 'Dynamic', 'Elegant', 'Vibrant', 'Stunning', 'Epic', 'Sparkling', 'Radiant', 'Sleek']
+                const nouns = ['Presentation', 'Project', 'Deck', 'Slides', 'Vision', 'Blueprint', 'Concept', 'Idea', 'Story', 'Canvas']
+                const name = `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`
+                setProjectTitle(name)
+              }}
+              className="p-1.5 ml-1 opacity-0 group-hover:opacity-100 hover:bg-gray-100 rounded text-gray-400 hover:text-primary transition-all"
+              title="Generate random name"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><circle cx="15.5" cy="8.5" r="1.5"></circle><circle cx="15.5" cy="15.5" r="1.5"></circle><circle cx="8.5" cy="15.5" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle></svg>
+            </button>
+          </div>
 
-          <button className="h-8 px-3 rounded-md bg-[#3dba4e] text-white text-sm font-semibold flex items-center gap-1 hover:bg-[#33a845] transition-all">
-            Public
-            <span className="text-xs">▾</span>
-          </button>
+          <div className="relative group">
+            <div className="h-8 px-3 rounded-md bg-[#3dba4e] text-white text-sm font-semibold flex items-center gap-1 hover:bg-[#33a845] transition-all cursor-pointer">
+              Public <span className="text-xs">▾</span>
+            </div>
+            <div className="absolute top-full left-0 mt-1 w-32 bg-white rounded-md shadow-lg border border-gray-200 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+              <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                Public
+              </button>
+              <button className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                Private
+              </button>
+            </div>
+          </div>
         </div>
 
         <EditorToolbar
@@ -2688,6 +2725,7 @@ const EditorPage = () => {
           onAddText={() => addTextElement()}
           onAddShape={() => setShowShapeOptions(!showShapeOptions)}
           onAddImage={handleAddImage}
+          onAddWebImage={() => setShowWebImageModal(true)}
           onAddVideo={handleAddVideo}
           onAddAudio={handleAddAudio}
           onAddIcon={() => setShowIconOptions(!showIconOptions)}
@@ -2720,16 +2758,26 @@ const EditorPage = () => {
 
           <div className="w-8 h-8 rounded-full bg-cyan-400 text-white text-xs font-bold flex items-center justify-center">DM</div>
 
-          <button
-            onClick={handlePresent}
-            className="h-9 px-3 rounded-md bg-[#2f7df6] hover:bg-[#226de1] text-white text-sm font-semibold flex items-center gap-1.5 transition-all"
-          >
-            <span>▶</span>
-            <span>Present</span>
-            <span className="text-xs">▾</span>
-          </button>
-
-          <div className="relative">
+            <div className="relative group">
+              <button
+                onClick={handlePresent}
+                className="h-9 px-3 rounded-md bg-[#2f7df6] hover:bg-[#226de1] text-white text-sm font-semibold flex items-center gap-1.5 transition-all"
+              >
+                <span>▶</span>
+                <span>Present</span>
+                <span className="text-xs ml-1">▾</span>
+              </button>
+              <div className="absolute top-full right-0 mt-1 w-48 bg-white rounded-md shadow-xl border border-gray-200 overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <button onClick={handlePresent} className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  Present from beginning
+                </button>
+                <button onClick={handlePresent} className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                  Presenter view
+                </button>
+              </div>
+            </div>
             <button
               onClick={() => setShowShareDropdown(!showShareDropdown)}
               className="h-9 px-3 rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-sm font-semibold flex items-center gap-1.5 transition-all"
@@ -3935,16 +3983,58 @@ const EditorPage = () => {
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-500 uppercase tracking-wider">Next frame preview</label>
-                  <div className="mt-2 rounded-xl border border-gray-200 p-2 bg-gray-50">
-                    <div className="aspect-[16/9] rounded-md border border-gray-200 bg-white flex items-center justify-center text-xs text-gray-500">
+                  <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2 block">Next frame preview</label>
+                  <div className="mt-1 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 flex items-center justify-center min-h-[140px] relative hover:border-primary/50 transition-colors shadow-sm">
                       {(() => {
                         const currentIndex = frames.findIndex((f) => f.id === activeFrameId)
                         const next = currentIndex >= 0 ? frames[currentIndex + 1] : null
-                        return next ? (next.title || `Frame ${currentIndex + 2}`) : 'No next frame'
+                        
+                        if (!next) {
+                          return <div className="text-sm text-gray-400 font-medium">No next frame</div>
+                        }
+
+                        // We can render a miniature version of the frame elements
+                        return (
+                          <div className="w-full h-full p-2 flex flex-col items-center justify-center">
+                            <div className="w-full aspect-[16/9] bg-white border border-gray-200 shadow-sm rounded relative overflow-hidden pointer-events-none mb-2 filter contrast-[0.95]">
+                              <div
+                                style={{
+                                  transform: 'scale(0.18)',
+                                  transformOrigin: 'top left',
+                                  width: next.layout?.width || 1280,
+                                  height: next.layout?.height || 720,
+                                  backgroundColor: next.backgroundColor || '#ffffff'
+                                }}
+                                className="absolute top-0 left-0"
+                              >
+                                {next.elements?.map(el => (
+                                  <div
+                                    key={el.id}
+                                    style={{
+                                      position: 'absolute',
+                                      left: el.x,
+                                      top: el.y,
+                                      width: el.width,
+                                      height: el.height,
+                                      backgroundColor: el.type === 'shape' ? el.fill : 'transparent',
+                                      color: el.color,
+                                      fontSize: el.fontSize,
+                                      fontWeight: el.fontWeight,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: el.textAlign === 'left' ? 'flex-start' : el.textAlign === 'right' ? 'flex-end' : 'center',
+                                      opacity: (el.opacity || 100) / 100
+                                    }}
+                                  >
+                                    {el.type === 'text' ? el.content : ''}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <span className="text-xs font-semibold text-gray-600 truncate w-full text-center px-2">{next.title || `Frame ${currentIndex + 2}`}</span>
+                          </div>
+                        )
                       })()}
-                    </div>
-                    <div className="text-center text-gray-400 text-xs mt-1">˅˅</div>
                   </div>
                 </div>
 
@@ -4069,6 +4159,94 @@ const EditorPage = () => {
         onClose={() => setShowShortcutsModal(false)}
         mode="editor"
       />
+
+      {/* Web Image Search Modal */}
+      {showWebImageModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] shadow-xl flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Search Images from Web</h3>
+              <button onClick={() => setShowWebImageModal(false)} className="text-gray-400 hover:text-gray-800">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={webImageQuery}
+                onChange={(e) => setWebImageQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    // search
+                    setIsSearchingWebImage(true);
+                    setTimeout(() => {
+                      const results = Array.from({length: 12}).map((_, i) => ({
+                        id: `img_${Date.now()}_${i}`,
+                        url: `https://picsum.photos/seed/${webImageQuery.replace(/[^a-zA-Z0-9]/g, '')}${i}/800/600`,
+                        thumb: `https://picsum.photos/seed/${webImageQuery.replace(/[^a-zA-Z0-9]/g, '')}${i}/200/150`
+                      }));
+                      setWebImageResults(results);
+                      setIsSearchingWebImage(false);
+                    }, 600);
+                  }
+                }}
+                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="Type to search and press Enter..."
+                autoFocus
+              />
+              <button 
+                onClick={() => {
+                  setIsSearchingWebImage(true);
+                  setTimeout(() => {
+                    const results = Array.from({length: 12}).map((_, i) => ({
+                      id: `img_${Date.now()}_${i}`,
+                      url: `https://picsum.photos/seed/${webImageQuery.replace(/[^a-zA-Z0-9]/g, '')}${i}/800/600`,
+                      thumb: `https://picsum.photos/seed/${webImageQuery.replace(/[^a-zA-Z0-9]/g, '')}${i}/200/150`
+                    }));
+                    setWebImageResults(results);
+                    setIsSearchingWebImage(false);
+                  }, 600);
+                }}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+              >
+                Search
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto min-h-[300px] border border-gray-100 rounded-lg p-2 bg-gray-50">
+              {isSearchingWebImage ? (
+                <div className="w-full h-full flex items-center justify-center text-gray-500">Searching...</div>
+              ) : webImageResults.length > 0 ? (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {webImageResults.map(img => (
+                    <button 
+                      key={img.id}
+                      onClick={() => {
+                        // integrate image into canvas
+                        addImageElement(img.url);
+                        setShowWebImageModal(false);
+                        toast.success('Image added from web');
+                      }}
+                      className="aspect-video relative rounded-md overflow-hidden border border-gray-200 hover:border-primary hover:shadow-md transition-all group"
+                    >
+                      <img src={img.thumb} alt="Search result" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                        <span className="text-white text-xs font-semibold">Add Image</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                  <p>Search for images to add to your slide</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Video URL Modal */}
       {showVideoModal && (
