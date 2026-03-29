@@ -1037,6 +1037,45 @@ const HomePage = () => {
                   </div>
                 )}
 
+                {/* Recently saved projects */}
+                {userFiles.length > 0 && (
+                  <div className="mb-8">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        Continue Editing
+                      </h3>
+                      <button
+                        onClick={() => setActiveTab('files')}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        View all →
+                      </button>
+                    </div>
+                    <div className="flex gap-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
+                      {userFiles.slice(0, 6).map((file) => (
+                        <div
+                          key={file.id}
+                          onClick={() => navigate(`/editor/${file.id}`)}
+                          className="flex-shrink-0 w-48 bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer border border-gray-100 group"
+                        >
+                          <div className={`h-28 bg-gradient-to-br ${file.thumbnail || 'from-blue-400 to-purple-600'} relative flex items-center justify-center`}>
+                            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-all" />
+                            <span className="relative z-10 text-white text-xs font-bold px-2 text-center line-clamp-2">{file.title?.split(' ').slice(0, 3).join(' ').toUpperCase()}</span>
+                          </div>
+                          <div className="p-2.5">
+                            <p className="text-xs font-semibold text-gray-900 truncate">{file.title || 'Untitled'}</p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">{file.savedAt ? new Date(file.savedAt).toLocaleDateString() : (file.created || '')}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Template Grid */}
                 {isLoadingTemplates ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

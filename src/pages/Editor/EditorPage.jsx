@@ -417,6 +417,7 @@ const EditorPage = () => {
   const navigate = useNavigate()
   const { templateId } = useParams()
   const canvasRef = useRef(null)
+  const autoSaveTimerRef = useRef(null)
   const toast = useToast()
   const { user } = useAuth()
   const [isBookmarked, setIsBookmarked] = useState(false)
@@ -567,6 +568,7 @@ const EditorPage = () => {
   const [isSaving, setIsSaving] = useState(false)
   const [lastSavedTime, setLastSavedTime] = useState(null)
   const [currentProjectId, setCurrentProjectId] = useState(null)
+  const [hasAutoNamed, setHasAutoNamed] = useState(false)
   const [fitZoom, setFitZoom] = useState(100)
   const [camera, setCamera] = useState({ zoom: 0.75, panX: 0, panY: 0 })
   const inFlightTemplateRef = useRef({ id: null, promise: null })
@@ -1150,6 +1152,19 @@ const EditorPage = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showShapeOptions, showIconOptions, showTableOptions])
 
+  const RANDOM_NAMES = [
+    'Amber Cascade', 'Sapphire Heights', 'Golden Meridian', 'Crimson Horizon',
+    'Indigo Summit', 'Emerald Drift', 'Cobalt Zenith', 'Ivory Crest',
+    'Scarlet Peak', 'Violet Haven', 'Teal Expanse', 'Onyx Pinnacle',
+    'Coral Surge', 'Slate Odyssey', 'Jade Circuit', 'Obsidian Voyage',
+    'Azure Canopy', 'Russet Skyline', 'Mint Chronicle', 'Copper Solstice',
+    'Sienna Loft', 'Cerulean Atlas', 'Mauve Equinox', 'Dusk Mosaic',
+  ]
+
+  const generateRandomName = useCallback(() => {
+    return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)]
+  }, [])
+
   // Save project to Your Files
   const handleSaveProject = useCallback(() => {
     setIsSaving(true)
@@ -1185,6 +1200,37 @@ const EditorPage = () => {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleSaveProject])
+
+  // Auto-save: fires 4 seconds after the last frame change
+  useEffect(() => {
+    if (!frames || frames.length === 0) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(() => {
+      // Auto-name on first real edit if title is still the default
+      let titleToUse = projectTitle
+      if (!hasAutoNamed && (!projectTitle || projectTitle === 'Untitled presentation')) {
+        titleToUse = generateRandomName()
+        setProjectTitle(titleToUse)
+        setHasAutoNamed(true)
+      }
+      // Save to userFiles
+      const projectData = {
+        id: currentProjectId || `auto_${Date.now()}`,
+        title: titleToUse || projectTitle || 'Untitled presentation',
+        frames,
+        templateId,
+        thumbnail: templateGradient || 'from-blue-400 to-purple-600',
+        editorBgImage,
+        savedAt: new Date().toISOString(),
+      }
+      const savedFile = saveToUserFiles(projectData)
+      if (savedFile && !currentProjectId) {
+        setCurrentProjectId(savedFile.id)
+      }
+      setLastSavedTime(new Date())
+    }, 4000)
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
+  }, [frames])
 
   const handlePresent = () => {
     navigate(`/present/${templateId || 'new'}`)
@@ -2840,9 +2886,9 @@ const EditorPage = () => {
       <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-3 sm:px-4 relative z-10">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/home')}
             className="p-2 hover:bg-gray-100 rounded-md transition-all text-gray-600"
-            title="Back"
+            title="Home"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="3" y1="6" x2="21" y2="6" />
@@ -2883,8 +2929,23 @@ const EditorPage = () => {
         />
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="hidden lg:block text-xs text-gray-500">
-            {isSaving ? 'Saving...' : (lastSavedTime || lastSaved) ? 'Saved' : ''}
+          <div className="flex items-center gap-2">
+            <div className="hidden lg:block text-xs text-gray-400">
+              {isSaving ? 'Saving...' : lastSavedTime ? `Saved` : lastSaved ? 'Saved' : 'Unsaved'}
+            </div>
+            <button
+              onClick={handleSaveProject}
+              disabled={isSaving}
+              title="Save (Ctrl+S)"
+              className="h-8 px-3 rounded-md border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 transition-all disabled:opacity-50"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              Save
+            </button>
           </div>
 
           <div
