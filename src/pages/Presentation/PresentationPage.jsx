@@ -555,9 +555,7 @@ const PresentationPage = () => {
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch((err) => {
-        console.error("Error fullscreen:", err)
-      })
+      document.documentElement.requestFullscreen().catch(() => {})
       setIsFullscreen(true)
     } else {
       if (document.exitFullscreen) {
@@ -591,8 +589,28 @@ const PresentationPage = () => {
         return
       }
       if (!hasStarted) return
-      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') goToNext()
-      if (e.key === 'ArrowLeft') goToPrev()
+
+      // Navigation
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'Enter' || e.key === 'PageDown' || e.key === 'n' || e.key === 'N') {
+        e.preventDefault()
+        goToNext()
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'Backspace' || e.key === 'PageUp' || e.key === 'p' || e.key === 'P') {
+        e.preventDefault()
+        goToPrev()
+      } else if (e.key === 'Home') {
+        e.preventDefault()
+        setCurrentSlideIndex(0)
+      } else if (e.key === 'End') {
+        e.preventDefault()
+        setCurrentSlideIndex(frames.length - 1)
+      } else if (e.key === 'f' || e.key === 'F' || e.key === 'F5' || e.key === 'F11') {
+        e.preventDefault()
+        toggleFullscreen()
+      } else if (/^[1-9]$/.test(e.key)) {
+        // Jump to slide 1-9
+        const slideNum = parseInt(e.key) - 1
+        if (slideNum < frames.length) setCurrentSlideIndex(slideNum)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)

@@ -67,18 +67,9 @@ const KeyboardShortcutsModal = ({ isOpen, onClose, mode = 'editor' }) => {
     ]},
     { category: 'Display', shortcuts: [
       { keys: ['F', 'F5', 'F11'], description: 'Toggle fullscreen' },
-      { keys: ['S'], description: 'Toggle presenter view' },
-      { keys: ['B', '.'], description: 'Black screen' },
-    ]},
-    { category: 'Tools', shortcuts: [
-      { keys: ['L'], description: 'Toggle laser pointer' },
-      { keys: ['T'], description: 'Toggle timer display' },
-      { keys: ['R'], description: 'Start/pause timer' },
-      { keys: ['0'], description: 'Reset timer' },
     ]},
     { category: 'General', shortcuts: [
       { keys: ['Esc'], description: 'Exit presentation' },
-      { keys: ['?'], description: 'Show keyboard shortcuts' },
     ]},
   ]
 
