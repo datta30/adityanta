@@ -158,13 +158,17 @@ const PresentationPage = () => {
   }
 
   const renderElement = (element, slideKey, elementIndex = 0) => {
-    // Use element's animation or fall back to a default entrance animation
-    const effectiveAnimation = (element.animation && element.animation !== 'none')
-      ? element.animation
-      : 'fadeIn'
+    // Normalise animation — may be a string key or { type, duration } object
+    const animType = typeof element.animation === 'object'
+      ? (element.animation?.type || 'none')
+      : (element.animation || 'none')
+    const animDuration = typeof element.animation === 'object'
+      ? (element.animation?.duration || element.animationSpeed || 500)
+      : (element.animationSpeed || 500)
+    const effectiveAnimation = (animType && animType !== 'none') ? animType : 'fadeIn'
     const animClass = getAnimationClass(effectiveAnimation)
     const animStyle = {
-      '--anim-duration': `${Math.round((element.animationSpeed || 500) * 1.35)}ms`,
+      '--anim-duration': `${Math.round(animDuration * 1.35)}ms`,
       '--anim-delay': `${(element.animationDelay || 0) + (elementIndex * 140)}ms`,
     }
 
