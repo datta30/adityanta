@@ -116,6 +116,7 @@ const PresentationPage = () => {
   const [hasStarted, setHasStarted] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
+  const [showNotes, setShowNotes] = useState(false)
   const containerRef = useRef(null)
   const controlsTimeoutRef = useRef(null)
 
@@ -740,6 +741,16 @@ const PresentationPage = () => {
           
           
 
+          <button onClick={() => setShowNotes(!showNotes)} className={`p-2 text-white hover:bg-white/20 rounded-full transition-colors ${showNotes ? 'bg-white/20' : ''}`} title="Toggle Speaker Notes">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+          </button>
+
           <button onClick={toggleFullscreen} className="p-2 text-white hover:bg-white/20 rounded-full transition-colors">
             {isFullscreen ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -759,6 +770,27 @@ const PresentationPage = () => {
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
+        </div>
+      )}
+
+      {showNotes && hasStarted && frames[currentSlideIndex]?.notes && (
+        <div className="absolute top-8 right-8 w-80 bg-gray-900/90 backdrop-blur-md rounded-xl p-5 shadow-2xl text-white z-50 animate-fade-in border border-white/10">
+          <div className="flex justify-between items-center mb-3 pb-2 border-b border-white/20">
+            <h3 className="font-semibold flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              </svg>
+              Speaker Notes
+            </h3>
+            <button onClick={() => setShowNotes(false)} className="text-gray-400 hover:text-white transition-colors">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="text-gray-200 text-sm whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+            {frames[currentSlideIndex].notes}
+          </div>
         </div>
       )}
     </div>

@@ -7,6 +7,7 @@ const EditorToolbar = ({
   onAddText,
   onAddShape,
   onAddImage,
+  onAddWebImage,
   onAddVideo,
   onAddAudio,
   onAddIcon,
@@ -32,6 +33,7 @@ const EditorToolbar = ({
 
   const mediaOptions = [
     { id: 'image', label: 'Image', icon: 'image', action: onAddImage },
+    { id: 'webImage', label: 'Web Image', icon: 'image', action: onAddWebImage },
     { id: 'video', label: 'Video', icon: 'video', action: onAddVideo },
     { id: 'audio', label: 'Audio', icon: 'audio', action: onAddAudio },
   ]

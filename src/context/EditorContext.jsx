@@ -255,9 +255,17 @@ const createBlankFrame = (id, title = 'Slide 1') => ({
 const createDefaultFrame = (id, title = 'New Frame', templateType = 'title') =>
   buildPreziFrameTemplate(id, title, templateType)
 
+const generateRandomName = () => {
+  const adjectives = ['Creative', 'Brilliant', 'Dynamic', 'Elegant', 'Vibrant', 'Stunning', 'Epic', 'Sparkling', 'Radiant', 'Sleek'];
+  const nouns = ['Presentation', 'Project', 'Deck', 'Slides', 'Vision', 'Blueprint', 'Concept', 'Idea', 'Story', 'Canvas'];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  return `${adj} ${noun}`;
+}
+
 // Initial blank project - Create 10 slides by default
 const createBlankProject = () => ({
-    title: 'Untitled Presentation',
+    title: generateRandomName(),
     frames: [{
       id: 1,
       title: 'Overview',
@@ -380,15 +388,12 @@ const createBlankProject = () => ({
     }
   }, [])
 
-  // Load from IndexedDB on mount (async) - DISABLED per user request
-  /*
+  // Load from IndexedDB on mount (async) - Enabled
   useEffect(() => {
     const loadFromIndexedDB = async () => {
       try {
         const indexedDBData = await loadAutosave()
         if (indexedDBData && isMountedRef.current && indexedDBData.frames && Array.isArray(indexedDBData.frames) && indexedDBData.frames.length > 0) {
-
-
           // Update state with IndexedDB data
           setProjectTitle(indexedDBData.title || initialState.title)
           setFrames(indexedDBData.frames)
@@ -403,11 +408,12 @@ const createBlankProject = () => ({
 
     loadFromIndexedDB()
   }, [initialState.title]) // Only run once on mount
-  */
-  // Just set initializing to false immediately since we skip loading
-  useEffect(() => {
-    setIsInitializing(false)
-  }, [])
+
+  // Just set initializing to false if we weren't depending on it 
+  // useEffect(() => {
+  //   setIsInitializing(false)
+  // }, [])
+
 
 
 
