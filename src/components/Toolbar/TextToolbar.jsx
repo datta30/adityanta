@@ -132,8 +132,13 @@ const TextToolbar = ({ element, onUpdate, onAnimationChange }) => {
   }, [])
 
   const handleFontSizeChange = (delta) => {
-    const newSize = Math.max(8, Math.min(200, fontSize + delta))
-    onUpdate({ fontSize: newSize })
+    if (delta > 0) {
+      const next = fontSizes.find(s => s > fontSize)
+      onUpdate({ fontSize: next ?? Math.min(200, fontSize + 1) })
+    } else {
+      const prev = [...fontSizes].reverse().find(s => s < fontSize)
+      onUpdate({ fontSize: prev ?? Math.max(8, fontSize - 1) })
+    }
   }
 
   const handleFontSizeSelect = (size) => {
@@ -170,7 +175,6 @@ const TextToolbar = ({ element, onUpdate, onAnimationChange }) => {
   }
 
   const applyColor = () => {
-    onUpdate({ color: tempColor })
     setShowColorPicker(false)
   }
 
@@ -376,9 +380,9 @@ const TextToolbar = ({ element, onUpdate, onAnimationChange }) => {
               className="w-full px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-dark transition-all flex items-center justify-center gap-2"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 6L6 18M6 6l12 12" />
+                <polyline points="20 6 9 17 4 12" />
               </svg>
-              Apply & Close
+              Done
             </button>
           </div>
         )}

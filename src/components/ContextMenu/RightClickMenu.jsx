@@ -279,9 +279,9 @@ const RightClickMenu = ({ x, y, onClose, onAction, hasSelection = false, current
             className="w-full px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-dark transition-all flex items-center justify-center gap-2"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
+              <polyline points="20 6 9 17 4 12" />
             </svg>
-            Apply & Close
+            Apply
           </button>
         </div>
       ) : showColorPicker ? (
@@ -335,9 +335,9 @@ const RightClickMenu = ({ x, y, onClose, onAction, hasSelection = false, current
             className="w-full px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary-dark transition-all flex items-center justify-center gap-2"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12" />
+              <polyline points="20 6 9 17 4 12" />
             </svg>
-            Apply & Close
+            Apply
           </button>
         </div>
       ) : (

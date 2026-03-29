@@ -810,12 +810,12 @@ const EditorPage = () => {
 
     const loadFromBackend = async () => {
       try {
-        console.log('[TEMPLATE] Step 1: Calling downloadTemplate for:', templateId)
+        logger.info('[TEMPLATE] Calling downloadTemplate for:', templateId)
         const result = await downloadTemplate(templateId)
 
         if (cancelled) return
 
-        console.log('[TEMPLATE] Step 2: downloadTemplate response:', {
+        logger.info('[TEMPLATE] downloadTemplate response:', {
           success: result?.success,
           hasS3Url: !!result?.s3_file_url,
           templateTitle: result?.template?.title,
@@ -823,7 +823,7 @@ const EditorPage = () => {
         })
 
         if (!result?.success) {
-          console.error('[TEMPLATE] Download failed:', result?.error)
+          logger.error('[TEMPLATE] Download failed:', result?.error)
           if (result?.error_code === 'DOWNLOAD_LIMIT_EXCEEDED') {
             toast.error('Download limit exceeded. Upgrade to premium for unlimited downloads.')
           }
@@ -832,21 +832,21 @@ const EditorPage = () => {
 
         // Backend returns s3_file_url → fetch PPTX from S3 and parse it
         if (result.s3_file_url) {
-          console.log('[TEMPLATE] Step 3: Fetching PPTX from S3...')
+          logger.info('[TEMPLATE] Fetching PPTX from S3...')
           const pptxResponse = await fetch(result.s3_file_url)
 
           if (cancelled) return
 
           if (!pptxResponse.ok) {
-            console.error('[TEMPLATE] S3 fetch failed:', pptxResponse.status)
+            logger.error('[TEMPLATE] S3 fetch failed:', pptxResponse.status)
             return null
           }
 
           const pptxBlob = await pptxResponse.blob()
-          console.log('[TEMPLATE] Step 4: PPTX blob size:', pptxBlob.size)
+          logger.info('[TEMPLATE] PPTX blob size:', pptxBlob.size)
 
           if (pptxBlob.size === 0) {
-            console.error('[TEMPLATE] Empty PPTX blob!')
+            logger.error('[TEMPLATE] Empty PPTX blob!')
             return null
           }
 
@@ -856,9 +856,9 @@ const EditorPage = () => {
             type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
           })
 
-          console.log('[TEMPLATE] Step 5: Parsing PPTX...')
+          logger.info('[TEMPLATE] Parsing PPTX...')
           const parsed = await parsePPTX(pptxFile)
-          console.log('[TEMPLATE] Step 6: Parsed! Title:', parsed.title, 'Slides:', parsed.frames?.length)
+          logger.info('[TEMPLATE] Parsed! Title:', parsed.title, 'Slides:', parsed.frames?.length)
 
           if (cancelled) return
 
@@ -876,7 +876,7 @@ const EditorPage = () => {
 
         return null
       } catch (error) {
-        console.error('[TEMPLATE] Error loading template:', error)
+        logger.error('[TEMPLATE] Error loading template:', error)
         return null
       }
     }
@@ -948,8 +948,11 @@ const EditorPage = () => {
   // Keyboard shortcuts - PowerPoint-like
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Don't trigger shortcuts when editing text (except Escape)
+      // Don't trigger shortcuts when editing text or typing in any input/textarea/select
+      const tag = document.activeElement?.tagName?.toLowerCase()
+      const isTypingInInput = tag === 'input' || tag === 'textarea' || tag === 'select' || document.activeElement?.isContentEditable
       if (editingTextId && e.key !== 'Escape') return
+      if (isTypingInInput && !editingTextId && e.key !== 'Escape') return
 
       // Undo/Redo
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -1057,6 +1060,22 @@ const EditorPage = () => {
         e.preventDefault()
         sendToBack(selectedElementId)
         toast.info('Sent to back')
+      }
+
+      // Text formatting shortcuts (only when a text element is selected)
+      if (selectedElement?.type === 'text' && !editingTextId) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+          e.preventDefault()
+          updateElement(selectedElementId, { fontWeight: selectedElement.fontWeight === 'bold' ? 'normal' : 'bold' })
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+          e.preventDefault()
+          updateElement(selectedElementId, { fontStyle: selectedElement.fontStyle === 'italic' ? 'normal' : 'italic' })
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
+          e.preventDefault()
+          updateElement(selectedElementId, { textDecoration: selectedElement.textDecoration === 'underline' ? 'none' : 'underline' })
+        }
       }
 
       // New Slide (Ctrl+M like PowerPoint)
@@ -4006,8 +4025,8 @@ const EditorPage = () => {
                 <div className="pt-3 border-t border-gray-100">
                   <label className="text-xs text-gray-500 block mb-2">Animation</label>
                   <select
-                    value={selectedElement.animation || 'none'}
-                    onChange={(e) => updateElementAnimation(selectedElementId, e.target.value)}
+                    value={selectedElement.animation?.type || selectedElement.animation || 'none'}
+                    onChange={(e) => updateElementAnimation(selectedElementId, { type: e.target.value, duration: ANIMATION_PRESETS[e.target.value]?.duration || 500 })}
                     className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded mb-2"
                   >
                     {Object.entries(ANIMATION_PRESETS).map(([key, preset]) => (
@@ -4022,8 +4041,8 @@ const EditorPage = () => {
                         min="100"
                         max="2000"
                         step="50"
-                        value={selectedElement.animationSpeed || 300}
-                        onChange={(e) => updateElement(selectedElementId, { animationSpeed: parseInt(e.target.value) || 300 })}
+                        value={selectedElement.animation?.duration || selectedElement.animationSpeed || 300}
+                        onChange={(e) => updateElementAnimation(selectedElementId, { type: selectedElement.animation?.type || selectedElement.animation || 'none', duration: parseInt(e.target.value) || 300 })}
                         className="w-full px-2 py-1 text-sm border border-gray-200 rounded"
                       />
                     </div>

@@ -144,12 +144,12 @@ const TemplateDetailModal = ({ template, onClose, onUpgrade }) => {
     }
   }
 
-  // Generate slides preview based on template frames
-  const slides = [
-    { preview: getDisplayPreview(template), subtitle: template.description || 'A very brief description or a subtopic' },
-    { preview: 'Slide 2', subtitle: 'Additional content' },
-    { preview: 'Slide 3', subtitle: 'More information' },
-  ]
+  // Generate slides preview based on template frames count
+  const slideCount = Math.max(1, template.frames || 1)
+  const slides = Array.from({ length: slideCount }, (_, i) => ({
+    preview: i === 0 ? getDisplayPreview(template) : `Slide ${i + 1}`,
+    subtitle: i === 0 ? (template.description || 'A very brief description or a subtopic') : 'Additional content',
+  }))
 
   const topicPreviewBackground = pickTopicBackground(template)
 

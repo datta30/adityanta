@@ -234,32 +234,34 @@ const FramesPanelPrezi = ({
                 </div>
               </div>
 
-              {confirmDeleteId === frame.id ? (
-                <div className="mt-1 flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                  <span className="text-[11px] text-gray-500">Delete frame?</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteFrame(frame.id) }}
-                    className="text-[11px] px-2 py-1 rounded border border-red-300 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-semibold"
-                  >Yes</button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }}
-                    className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
-                  >No</button>
-                </div>
-              ) : (
-                <div className="mt-1 hidden group-hover:flex justify-end gap-1">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); duplicateFrame(frame.id) }}
-                    className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
-                  >Duplicate</button>
-                  {frames.length > 1 && (
+              <div className="mt-1 flex items-center justify-end gap-1 min-h-[28px]" onClick={(e) => e.stopPropagation()}>
+                {confirmDeleteId === frame.id ? (
+                  <>
+                    <span className="text-[11px] text-gray-500">Delete?</span>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(frame.id) }}
-                      className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 transition-all"
-                    >Delete</button>
-                  )}
-                </div>
-              )}
+                      onClick={(e) => { e.stopPropagation(); deleteFrame(frame.id) }}
+                      className="text-[11px] px-2 py-1 rounded border border-red-300 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-semibold"
+                    >Yes</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                      className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
+                    >No</button>
+                  </>
+                ) : (
+                  <div className="hidden group-hover:flex gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); duplicateFrame(frame.id) }}
+                      className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
+                    >Duplicate</button>
+                    {frames.length > 1 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(frame.id) }}
+                        className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 transition-all"
+                      >Delete</button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )
         })}
