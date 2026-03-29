@@ -11,6 +11,17 @@ import logger from '../../utils/logger'
 const normalizeTopicForBackground = (topic) => {
   const value = `${topic || ''}`.trim().toLowerCase()
   const topicMap = {
+    business: 'Business',
+    economics: 'Economics',
+    history: 'History',
+    geography: 'Geography',
+    science: 'Science',
+    marketing: 'Marketing',
+    'legal studies': 'Legal Studies',
+    'political science': 'Political Science',
+    'music and dance': 'Music and dance',
+    'technology & computer subjects': 'Technology & Computer Subjects',
+    'physical & skill subjects': 'Physical & Skill Subjects',
     mathematics: 'Maths',
     maths: 'Maths',
     math: 'Maths',
@@ -18,7 +29,7 @@ const normalizeTopicForBackground = (topic) => {
     'financial markets management': 'Finance',
     'fine arts / painting': 'Fine Arts - Painting',
     'fine arts - painting': 'Fine Arts - Painting',
-    literature: 'Generic',
+    literature: 'History',
     generic: 'Generic',
     general: 'Generic',
   }
@@ -45,6 +56,8 @@ const pickTopicBackground = (template) => {
   return images[hash % images.length]
 }
 
+const NEW_PROJECT_BG_KEY = 'adityanta_new_project_bg'
+
 const TemplateDetailModal = ({ template, onClose, onUpgrade }) => {
   const navigate = useNavigate()
   const toast = useToast()
@@ -54,6 +67,14 @@ const TemplateDetailModal = ({ template, onClose, onUpgrade }) => {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [favorite, setFavorite] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [selectedBackground, setSelectedBackground] = useState(null)
+
+  // Get available backgrounds for this template's topic
+  const topicKey = normalizeTopicForBackground(template?.topic)
+  const availableBackgrounds = [
+    ...(backgroundData[topicKey] || []),
+    ...(topicKey !== 'Generic' ? (backgroundData['Generic'] || []) : []),
+  ]
 
   // Check if template is favorite
   useEffect(() => {
@@ -87,6 +108,13 @@ const TemplateDetailModal = ({ template, onClose, onUpgrade }) => {
         throw new Error('Invalid template: missing ID')
       }
 
+      // Store selected background so editor picks it up
+      if (selectedBackground) {
+        sessionStorage.setItem(NEW_PROJECT_BG_KEY, JSON.stringify({ background: selectedBackground }))
+      } else {
+        sessionStorage.removeItem(NEW_PROJECT_BG_KEY)
+      }
+
       // Navigate directly to editor - EditorPage handles the actual template download
       // This avoids double download tracking and the autosave race condition
       toast.success('Opening template...')
@@ -116,12 +144,12 @@ const TemplateDetailModal = ({ template, onClose, onUpgrade }) => {
     }
   }
 
-  // Generate slides preview based on template frames
-  const slides = [
-    { preview: getDisplayPreview(template), subtitle: template.description || 'A very brief description or a subtopic' },
-    { preview: 'Slide 2', subtitle: 'Additional content' },
-    { preview: 'Slide 3', subtitle: 'More information' },
-  ]
+  // Generate slides preview based on template frames count
+  const slideCount = Math.max(1, template.frames || 1)
+  const slides = Array.from({ length: slideCount }, (_, i) => ({
+    preview: i === 0 ? getDisplayPreview(template) : `Slide ${i + 1}`,
+    subtitle: i === 0 ? (template.description || 'A very brief description or a subtopic') : 'Additional content',
+  }))
 
   const topicPreviewBackground = pickTopicBackground(template)
 
@@ -256,6 +284,43 @@ const TemplateDetailModal = ({ template, onClose, onUpgrade }) => {
                 {template.description || `A beautifully designed template for ${template.topic || 'educational'} presentations. Perfect for teachers and educators looking to create engaging slide content.`}
               </p>
             </div>
+
+            {/* Background Selection */}
+            {availableBackgrounds.length > 0 && (
+              <div className="mt-6">
+                <h3 className="font-semibold text-gray-900 mb-2">Choose Background</h3>
+                <p className="text-xs text-gray-500 mb-3">Select a background for your presentation</p>
+                <div className="flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
+                  {/* No background option */}
+                  <button
+                    onClick={() => setSelectedBackground(null)}
+                    className={`flex-shrink-0 w-16 h-10 rounded-lg border-2 transition-all flex items-center justify-center text-xs text-gray-400 ${
+                      selectedBackground === null ? 'border-primary ring-2 ring-primary/30' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    title="Default"
+                  >
+                    Auto
+                  </button>
+                  {availableBackgrounds.map((bgPath, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedBackground(bgPath)}
+                      className={`flex-shrink-0 w-16 h-10 rounded-lg border-2 overflow-hidden transition-all ${
+                        selectedBackground === bgPath ? 'border-primary ring-2 ring-primary/30' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      title={`Background ${idx + 1}`}
+                    >
+                      <img
+                        src={bgPath}
+                        alt={`Background ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.style.display = 'none' }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Panel - Preview */}

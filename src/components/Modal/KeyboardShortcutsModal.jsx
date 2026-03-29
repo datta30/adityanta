@@ -19,22 +19,39 @@ const KeyboardShortcutsModal = ({ isOpen, onClose, mode = 'editor' }) => {
   const editorShortcuts = [
     { category: 'General', shortcuts: [
       { keys: ['Ctrl', 'Z'], description: 'Undo' },
-      { keys: ['Ctrl', 'Shift', 'Z'], description: 'Redo' },
+      { keys: ['Ctrl', 'Y'], description: 'Redo' },
       { keys: ['Ctrl', 'C'], description: 'Copy element' },
       { keys: ['Ctrl', 'V'], description: 'Paste element' },
+      { keys: ['Ctrl', 'D'], description: 'Duplicate element' },
+      { keys: ['Ctrl', 'X'], description: 'Cut element' },
       { keys: ['Delete'], description: 'Delete selected element' },
-      { keys: ['Esc'], description: 'Deselect element' },
+      { keys: ['Esc'], description: 'Deselect / stop editing' },
+      { keys: ['Ctrl', 'M'], description: 'Add new slide' },
+      { keys: ['F5'], description: 'Present' },
       { keys: ['?'], description: 'Show keyboard shortcuts' },
+    ]},
+    { category: 'Text Formatting', shortcuts: [
+      { keys: ['Ctrl', 'B'], description: 'Bold (text selected)' },
+      { keys: ['Ctrl', 'I'], description: 'Italic (text selected)' },
+      { keys: ['Ctrl', 'U'], description: 'Underline (text selected)' },
+      { keys: ['Enter'], description: 'Start editing text' },
+    ]},
+    { category: 'Element', shortcuts: [
+      { keys: ['↑↓←→'], description: 'Nudge element (1px)' },
+      { keys: ['Shift', '↑↓←→'], description: 'Nudge element (10px)' },
+      { keys: ['Ctrl', 'Shift', ']'], description: 'Bring to front' },
+      { keys: ['Ctrl', 'Shift', '['], description: 'Send to back' },
     ]},
     { category: 'Navigation', shortcuts: [
       { keys: ['↑', '↓'], description: 'Navigate between frames' },
       { keys: ['Home'], description: 'Go to first frame' },
       { keys: ['End'], description: 'Go to last frame' },
     ]},
-    { category: 'Zoom', shortcuts: [
+    { category: 'Zoom & Pan', shortcuts: [
       { keys: ['Ctrl', '+'], description: 'Zoom in' },
       { keys: ['Ctrl', '-'], description: 'Zoom out' },
       { keys: ['Ctrl', '0'], description: 'Reset zoom to 100%' },
+      { keys: ['Space', 'Drag'], description: 'Pan canvas' },
     ]},
   ]
 
@@ -50,18 +67,9 @@ const KeyboardShortcutsModal = ({ isOpen, onClose, mode = 'editor' }) => {
     ]},
     { category: 'Display', shortcuts: [
       { keys: ['F', 'F5', 'F11'], description: 'Toggle fullscreen' },
-      { keys: ['S'], description: 'Toggle presenter view' },
-      { keys: ['B', '.'], description: 'Black screen' },
-    ]},
-    { category: 'Tools', shortcuts: [
-      { keys: ['L'], description: 'Toggle laser pointer' },
-      { keys: ['T'], description: 'Toggle timer display' },
-      { keys: ['R'], description: 'Start/pause timer' },
-      { keys: ['0'], description: 'Reset timer' },
     ]},
     { category: 'General', shortcuts: [
       { keys: ['Esc'], description: 'Exit presentation' },
-      { keys: ['?'], description: 'Show keyboard shortcuts' },
     ]},
   ]
 

@@ -19,6 +19,59 @@ import backgroundData from '../../utils/backgroundData.json'
 const SLIDE_WIDTH = 1280
 const SLIDE_HEIGHT = 720
 const WORLD_PADDING = 220
+
+const FRAME_GAP = 20
+const FRAME_MIN_H = 80
+// Background bounds (from PREZI_LAYOUT_PRESETS with 40px padding each side)
+const BG_L = 20, BG_T = 80, BG_R = 2940, BG_B = 1190
+// Hero frame — fixed central position (frame 0)
+const HERO_LAYOUT = { x: 820, y: 220, width: 1280, height: 720 }
+// Side areas flanking the hero, entirely within background bounds
+const LEFT_AREA  = { x: 40,   y: 100, w: 760, h: 1070 } // between bg-left and hero
+const RIGHT_AREA = { x: 2120, y: 100, w: 800, h: 1070 } // between hero-right and bg-right
+
+// Clamp a stored layout so it stays fully inside the background.
+const clampToBg = (layout) => {
+  const w = layout.width  || 200
+  const h = layout.height || 150
+  return {
+    ...layout,
+    x: Math.max(BG_L, Math.min(layout.x, BG_R - w)),
+    y: Math.max(BG_T, Math.min(layout.y, BG_B - h)),
+  }
+}
+
+// Distribute N frames inside one side area, auto-choosing column count so
+// frame height stays >= FRAME_MIN_H. All positions guaranteed within background.
+const layoutsForSideArea = (area, count) => {
+  if (count === 0) return []
+  let cols = 1
+  while (cols < 4) {
+    const rows = Math.ceil(count / cols)
+    if ((area.h - FRAME_GAP * (rows - 1)) / rows >= FRAME_MIN_H) break
+    cols++
+  }
+  const rows  = Math.ceil(count / cols)
+  const colW  = Math.floor((area.w - FRAME_GAP * (cols - 1)) / cols)
+  const rowH  = Math.max(FRAME_MIN_H, Math.floor((area.h - FRAME_GAP * (rows - 1)) / rows))
+  return Array.from({ length: count }, (_, i) => ({
+    x: area.x + (i % cols) * (colW + FRAME_GAP),
+    y: area.y + Math.floor(i / cols) * (rowH + FRAME_GAP),
+    width: colW,
+    height: rowH,
+  }))
+}
+
+// Compute layout positions for all side frames (frames 1+).
+// Left and right areas are filled evenly; everything stays inside background.
+const computeFrameLayouts = (sideCount) => {
+  if (sideCount === 0) return []
+  const leftN = Math.ceil(sideCount / 2)
+  return [
+    ...layoutsForSideArea(LEFT_AREA,  leftN),
+    ...layoutsForSideArea(RIGHT_AREA, sideCount - leftN),
+  ]
+}
 const templateRuntimeCache = new Map()
 const NEW_PROJECT_BG_KEY = 'adityanta_new_project_bg'
 const PREZI_LAYOUT_PRESETS = [
@@ -85,6 +138,17 @@ const buildInterFrameConnectors = (layout) => {
 const normalizeTopicForBackground = (topic) => {
   const value = `${topic || ''}`.trim().toLowerCase()
   const topicMap = {
+    business: 'Business',
+    economics: 'Economics',
+    history: 'History',
+    geography: 'Geography',
+    science: 'Science',
+    marketing: 'Marketing',
+    'legal studies': 'Legal Studies',
+    'political science': 'Political Science',
+    'music and dance': 'Music and dance',
+    'technology & computer subjects': 'Technology & Computer Subjects',
+    'physical & skill subjects': 'Physical & Skill Subjects',
     mathematics: 'Maths',
     maths: 'Maths',
     math: 'Maths',
@@ -92,7 +156,7 @@ const normalizeTopicForBackground = (topic) => {
     'financial markets management': 'Finance',
     'fine arts / painting': 'Fine Arts - Painting',
     'fine arts - painting': 'Fine Arts - Painting',
-    literature: 'Generic',
+    literature: 'History',
     generic: 'Generic',
     general: 'Generic',
   }
@@ -353,6 +417,7 @@ const EditorPage = () => {
   const navigate = useNavigate()
   const { templateId } = useParams()
   const canvasRef = useRef(null)
+  const autoSaveTimerRef = useRef(null)
   const toast = useToast()
   const { user } = useAuth()
   const [isBookmarked, setIsBookmarked] = useState(false)
@@ -462,8 +527,12 @@ const EditorPage = () => {
   const defaultEditorBg = useMemo(() => {
     const topic = normalizeTopicForBackground(projectTopic || 'Generic')
     const bgs = backgroundData[topic] || backgroundData['Generic'] || []
-    return bgs.length > 0 ? bgs[Math.floor(Math.random() * bgs.length)] : null
-  }, [projectTopic])
+    if (bgs.length === 0) return null
+
+    const stableSeed = `${templateId || ''}|${projectTopic || topic}`
+    const hash = [...stableSeed].reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+    return bgs[hash % bgs.length]
+  }, [projectTopic, templateId])
 
   const editorBgImage = editorBackground !== undefined ? editorBackground : defaultEditorBg
 
@@ -503,10 +572,13 @@ const EditorPage = () => {
   const [isSaving, setIsSaving] = useState(false)
   const [lastSavedTime, setLastSavedTime] = useState(null)
   const [currentProjectId, setCurrentProjectId] = useState(null)
+  const [hasAutoNamed, setHasAutoNamed] = useState(false)
   const [fitZoom, setFitZoom] = useState(100)
   const [camera, setCamera] = useState({ zoom: 0.75, panX: 0, panY: 0 })
   const inFlightTemplateRef = useRef({ id: null, promise: null })
   const hasInitializedCameraRef = useRef(false)
+  const pendingFocusModeRef = useRef('frame')
+  const didFrameDragRef = useRef(false)
 
   // Drawing state
   const drawingCanvasRef = useRef(null)
@@ -538,27 +610,21 @@ const EditorPage = () => {
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, elemX: 0, elemY: 0 })
 
   const [draggingFrameId, setDraggingFrameId] = useState(null)
-  const [frameDragStart, setFrameDragStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0 })
+  const [frameDragStart, setFrameDragStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0, frameW: 0, frameH: 0 })
+
+  // Frame resize state
+  const [isResizingFrame, setIsResizingFrame] = useState(false)
+  const [frameResizeHandle, setFrameResizeHandle] = useState(null)
+  const [frameResizeStart, setFrameResizeStart] = useState({ x: 0, y: 0, frameX: 0, frameY: 0, frameW: 0, frameH: 0, frameId: null })
 
   const frameMapLayout = useMemo(() => {
-    const presets = PREZI_LAYOUT_PRESETS
-
-    let rightMost = 0
+    const sideLayouts = computeFrameLayouts(Math.max(0, frames.length - 1))
     return frames.map((frame, index) => {
-      // Prefer stored layout from frame.layout, then preset, then default
-      const stored = frame.layout
-      const p = stored || presets[index]
-      let next
-      if (p) {
-        next = { ...p }
-      } else {
-        next = { width: 640, height: 360, x: rightMost + 60, y: 0 }
+      if (index === 0) {
+        return { id: frame.id, ...(frame.layout ? clampToBg(frame.layout) : HERO_LAYOUT) }
       }
-      rightMost = Math.max(rightMost, next.x + next.width)
-      return {
-        id: frame.id,
-        ...next,
-      }
+      if (frame.layout) return { id: frame.id, ...clampToBg(frame.layout) }
+      return { id: frame.id, ...(sideLayouts[index - 1] || sideLayouts[sideLayouts.length - 1] || HERO_LAYOUT) }
     })
   }, [frames])
 
@@ -584,20 +650,22 @@ const EditorPage = () => {
 
   const activeFrameLayout = frameMapLayout.find((f) => f.id === activeFrameId) || { x: 400, y: 200, width: 640, height: 400 }
 
+  // Background bounds are FIXED — always based on the initial PREZI_LAYOUT_PRESETS,
+  // so the background image never grows when new frames are added.
   const frameBackgroundBounds = useMemo(() => {
-    if (!frameMapLayout.length) return null
-    const minX = Math.min(...frameMapLayout.map((f) => f.x))
-    const minY = Math.min(...frameMapLayout.map((f) => f.y))
-    const maxX = Math.max(...frameMapLayout.map((f) => f.x + f.width))
-    const maxY = Math.max(...frameMapLayout.map((f) => f.y + f.height))
+    if (!frames.length) return null
     const padding = 40
+    const minX = Math.min(...PREZI_LAYOUT_PRESETS.map((p) => p.x))
+    const minY = Math.min(...PREZI_LAYOUT_PRESETS.map((p) => p.y))
+    const maxX = Math.max(...PREZI_LAYOUT_PRESETS.map((p) => p.x + p.width))
+    const maxY = Math.max(...PREZI_LAYOUT_PRESETS.map((p) => p.y + p.height))
     return {
       x: minX - padding,
       y: minY - padding,
-      width: (maxX - minX) + (padding * 2),
-      height: (maxY - minY) + (padding * 2),
+      width: (maxX - minX) + padding * 2,
+      height: (maxY - minY) + padding * 2,
     }
-  }, [frameMapLayout])
+  }, [frames.length])
 
   // Ensure frames are always initialized - safety fallback
   useEffect(() => {
@@ -748,12 +816,12 @@ const EditorPage = () => {
 
     const loadFromBackend = async () => {
       try {
-        console.log('[TEMPLATE] Step 1: Calling downloadTemplate for:', templateId)
+        logger.info('[TEMPLATE] Calling downloadTemplate for:', templateId)
         const result = await downloadTemplate(templateId)
 
         if (cancelled) return
 
-        console.log('[TEMPLATE] Step 2: downloadTemplate response:', {
+        logger.info('[TEMPLATE] downloadTemplate response:', {
           success: result?.success,
           hasS3Url: !!result?.s3_file_url,
           templateTitle: result?.template?.title,
@@ -761,7 +829,7 @@ const EditorPage = () => {
         })
 
         if (!result?.success) {
-          console.error('[TEMPLATE] Download failed:', result?.error)
+          logger.error('[TEMPLATE] Download failed:', result?.error)
           if (result?.error_code === 'DOWNLOAD_LIMIT_EXCEEDED') {
             toast.error('Download limit exceeded. Upgrade to premium for unlimited downloads.')
           }
@@ -770,21 +838,21 @@ const EditorPage = () => {
 
         // Backend returns s3_file_url → fetch PPTX from S3 and parse it
         if (result.s3_file_url) {
-          console.log('[TEMPLATE] Step 3: Fetching PPTX from S3...')
+          logger.info('[TEMPLATE] Fetching PPTX from S3...')
           const pptxResponse = await fetch(result.s3_file_url)
 
           if (cancelled) return
 
           if (!pptxResponse.ok) {
-            console.error('[TEMPLATE] S3 fetch failed:', pptxResponse.status)
+            logger.error('[TEMPLATE] S3 fetch failed:', pptxResponse.status)
             return null
           }
 
           const pptxBlob = await pptxResponse.blob()
-          console.log('[TEMPLATE] Step 4: PPTX blob size:', pptxBlob.size)
+          logger.info('[TEMPLATE] PPTX blob size:', pptxBlob.size)
 
           if (pptxBlob.size === 0) {
-            console.error('[TEMPLATE] Empty PPTX blob!')
+            logger.error('[TEMPLATE] Empty PPTX blob!')
             return null
           }
 
@@ -794,9 +862,9 @@ const EditorPage = () => {
             type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
           })
 
-          console.log('[TEMPLATE] Step 5: Parsing PPTX...')
+          logger.info('[TEMPLATE] Parsing PPTX...')
           const parsed = await parsePPTX(pptxFile)
-          console.log('[TEMPLATE] Step 6: Parsed! Title:', parsed.title, 'Slides:', parsed.frames?.length)
+          logger.info('[TEMPLATE] Parsed! Title:', parsed.title, 'Slides:', parsed.frames?.length)
 
           if (cancelled) return
 
@@ -814,7 +882,7 @@ const EditorPage = () => {
 
         return null
       } catch (error) {
-        console.error('[TEMPLATE] Error loading template:', error)
+        logger.error('[TEMPLATE] Error loading template:', error)
         return null
       }
     }
@@ -886,8 +954,11 @@ const EditorPage = () => {
   // Keyboard shortcuts - PowerPoint-like
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Don't trigger shortcuts when editing text (except Escape)
+      // Don't trigger shortcuts when editing text or typing in any input/textarea/select
+      const tag = document.activeElement?.tagName?.toLowerCase()
+      const isTypingInInput = tag === 'input' || tag === 'textarea' || tag === 'select' || document.activeElement?.isContentEditable
       if (editingTextId && e.key !== 'Escape') return
+      if (isTypingInInput && !editingTextId && e.key !== 'Escape') return
 
       // Undo/Redo
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -997,9 +1068,26 @@ const EditorPage = () => {
         toast.info('Sent to back')
       }
 
+      // Text formatting shortcuts (only when a text element is selected)
+      if (selectedElement?.type === 'text' && !editingTextId) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+          e.preventDefault()
+          updateElement(selectedElementId, { fontWeight: selectedElement.fontWeight === 'bold' ? 'normal' : 'bold' })
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+          e.preventDefault()
+          updateElement(selectedElementId, { fontStyle: selectedElement.fontStyle === 'italic' ? 'normal' : 'italic' })
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
+          e.preventDefault()
+          updateElement(selectedElementId, { textDecoration: selectedElement.textDecoration === 'underline' ? 'none' : 'underline' })
+        }
+      }
+
       // New Slide (Ctrl+M like PowerPoint)
       if ((e.ctrlKey || e.metaKey) && e.key === 'm') {
         e.preventDefault()
+        pendingFocusModeRef.current = 'frame'
         addFrame()
         toast.success('New slide added')
       }
@@ -1068,6 +1156,19 @@ const EditorPage = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showShapeOptions, showIconOptions, showTableOptions])
 
+  const RANDOM_NAMES = [
+    'Amber Cascade', 'Sapphire Heights', 'Golden Meridian', 'Crimson Horizon',
+    'Indigo Summit', 'Emerald Drift', 'Cobalt Zenith', 'Ivory Crest',
+    'Scarlet Peak', 'Violet Haven', 'Teal Expanse', 'Onyx Pinnacle',
+    'Coral Surge', 'Slate Odyssey', 'Jade Circuit', 'Obsidian Voyage',
+    'Azure Canopy', 'Russet Skyline', 'Mint Chronicle', 'Copper Solstice',
+    'Sienna Loft', 'Cerulean Atlas', 'Mauve Equinox', 'Dusk Mosaic',
+  ]
+
+  const generateRandomName = useCallback(() => {
+    return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)]
+  }, [])
+
   // Save project to Your Files
   const handleSaveProject = useCallback(() => {
     setIsSaving(true)
@@ -1103,6 +1204,37 @@ const EditorPage = () => {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleSaveProject])
+
+  // Auto-save: fires 4 seconds after the last frame change
+  useEffect(() => {
+    if (!frames || frames.length === 0) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(() => {
+      // Auto-name on first real edit if title is still the default
+      let titleToUse = projectTitle
+      if (!hasAutoNamed && (!projectTitle || projectTitle === 'Untitled presentation')) {
+        titleToUse = generateRandomName()
+        setProjectTitle(titleToUse)
+        setHasAutoNamed(true)
+      }
+      // Save to userFiles
+      const projectData = {
+        id: currentProjectId || `auto_${Date.now()}`,
+        title: titleToUse || projectTitle || 'Untitled presentation',
+        frames,
+        templateId,
+        thumbnail: templateGradient || 'from-blue-400 to-purple-600',
+        editorBgImage,
+        savedAt: new Date().toISOString(),
+      }
+      const savedFile = saveToUserFiles(projectData)
+      if (savedFile && !currentProjectId) {
+        setCurrentProjectId(savedFile.id)
+      }
+      setLastSavedTime(new Date())
+    }, 4000)
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current) }
+  }, [frames])
 
   const handlePresent = () => {
     navigate(`/present/${templateId || 'new'}`)
@@ -1197,6 +1329,7 @@ const EditorPage = () => {
   const handleElementClick = (element, e) => {
     e.stopPropagation()
     setSelectedElementId(element.id)
+    setRightPanelTab('properties')
     if (element.type === 'text') {
       setShowTextToolbar(true)
       // If it's a placeholder, start editing immediately on single click
@@ -1234,14 +1367,17 @@ const EditorPage = () => {
   // Drag handlers
 
   const handleFrameDragStart = (e, frameBox) => {
+    if (e.button !== 0) return // only left click
     e.stopPropagation()
-    e.preventDefault()
+    didFrameDragRef.current = false
     setDraggingFrameId(frameBox.id)
     setFrameDragStart({
       x: e.clientX,
       y: e.clientY,
       frameX: frameBox.x,
-      frameY: frameBox.y
+      frameY: frameBox.y,
+      frameW: frameBox.width,
+      frameH: frameBox.height
     })
   }
 
@@ -1249,15 +1385,72 @@ const EditorPage = () => {
     if (!draggingFrameId) return
     const deltaX = (e.clientX - frameDragStart.x) / camera.zoom
     const deltaY = (e.clientY - frameDragStart.y) / camera.zoom
+    // Mark as real drag if moved more than 4px
+    if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+      didFrameDragRef.current = true
+    }
     updateFrameLayout(draggingFrameId, {
-      x: frameDragStart.frameX + deltaX,
-      y: frameDragStart.frameY + deltaY
+      x: Math.max(BG_L, Math.min(frameDragStart.frameX + deltaX, BG_R - frameDragStart.frameW)),
+      y: Math.max(BG_T, Math.min(frameDragStart.frameY + deltaY, BG_B - frameDragStart.frameH)),
+      width: frameDragStart.frameW,
+      height: frameDragStart.frameH
     })
   }, [draggingFrameId, frameDragStart, camera.zoom, updateFrameLayout])
 
   const handleFrameDragEnd = useCallback(() => {
     setDraggingFrameId(null)
   }, [])
+
+  const handleFrameResizeStart = (e, handle, frameBox) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    e.preventDefault()
+    setIsResizingFrame(true)
+    setFrameResizeHandle(handle)
+    setFrameResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      frameX: frameBox.x,
+      frameY: frameBox.y,
+      frameW: frameBox.width,
+      frameH: frameBox.height,
+      frameId: frameBox.id,
+    })
+  }
+
+  const handleFrameResizeMove = useCallback((e) => {
+    if (!isResizingFrame || !frameResizeHandle) return
+    const dx = (e.clientX - frameResizeStart.x) / camera.zoom
+    const dy = (e.clientY - frameResizeStart.y) / camera.zoom
+    const MIN = 160
+
+    let x = frameResizeStart.frameX
+    let y = frameResizeStart.frameY
+    let w = frameResizeStart.frameW
+    let h = frameResizeStart.frameH
+
+    if (frameResizeHandle.includes('e')) w = Math.max(MIN, w + dx)
+    if (frameResizeHandle.includes('s')) h = Math.max(MIN, h + dy)
+    if (frameResizeHandle.includes('w')) {
+      const d = Math.min(dx, w - MIN)
+      x = x + d; w = w - d
+    }
+    if (frameResizeHandle.includes('n')) {
+      const d = Math.min(dy, h - MIN)
+      y = y + d; h = h - d
+    }
+
+    // Clamp to background bounds
+    x = Math.max(BG_L, x); y = Math.max(BG_T, y)
+    w = Math.min(w, BG_R - x); h = Math.min(h, BG_B - y)
+    updateFrameLayout(frameResizeStart.frameId, { x, y, width: Math.round(w), height: Math.round(h) })
+  }, [isResizingFrame, frameResizeHandle, frameResizeStart, camera.zoom, updateFrameLayout])
+
+  const handleFrameResizeEnd = useCallback(() => {
+    setIsResizingFrame(false)
+    setFrameResizeHandle(null)
+    commitHistory()
+  }, [commitHistory])
 
 
   const handleDragStart = (e, element) => {
@@ -1339,32 +1532,20 @@ const EditorPage = () => {
   // Mouse move/up for drag and resize
   useEffect(() => {
     const handleMouseMove = (e) => {
-      if (isDragging) {
-        handleDragMove(e)
-      }
-      if (isResizing) {
-        handleResizeMove(e)
-      }
-      if (draggingFrameId) {
-        handleFrameDragMove(e)
-      }
+      if (isDragging) handleDragMove(e)
+      if (isResizing) handleResizeMove(e)
+      if (draggingFrameId) handleFrameDragMove(e)
+      if (isResizingFrame) handleFrameResizeMove(e)
     }
 
     const handleMouseUp = () => {
-      if (isDragging) {
-        handleDragEnd()
-        commitHistory() // Commit drag to history
-      }
-      if (isResizing) {
-        handleResizeEnd()
-      }
-      if (draggingFrameId) {
-        handleFrameDragEnd()
-        commitHistory() // Commit resize to history
-      }
+      if (isDragging) { handleDragEnd(); commitHistory() }
+      if (isResizing) handleResizeEnd()
+      if (draggingFrameId) { handleFrameDragEnd(); commitHistory() }
+      if (isResizingFrame) handleFrameResizeEnd()
     }
 
-    if (isDragging || isResizing || draggingFrameId) {
+    if (isDragging || isResizing || draggingFrameId || isResizingFrame) {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
       return () => {
@@ -1372,7 +1553,7 @@ const EditorPage = () => {
         document.removeEventListener('mouseup', handleMouseUp)
       }
     }
-  }, [isDragging, isResizing, handleDragMove, handleDragEnd, handleResizeMove, handleResizeEnd, handleFrameDragMove, handleFrameDragEnd, draggingFrameId])
+  }, [isDragging, isResizing, handleDragMove, handleDragEnd, handleResizeMove, handleResizeEnd, handleFrameDragMove, handleFrameDragEnd, draggingFrameId, isResizingFrame, handleFrameResizeMove, handleFrameResizeEnd])
 
   // Handle text content change
   const handleTextChange = (elementId, newContent) => {
@@ -1688,9 +1869,22 @@ const EditorPage = () => {
     })
   }
 
+  // Normalise animation — may be { type, duration } object or legacy string key
+  const getAnimType = (element) => {
+    if (!element.animation) return 'none'
+    if (typeof element.animation === 'object') return element.animation.type || 'none'
+    return element.animation
+  }
+
+  const getAnimDuration = (element) => {
+    if (typeof element.animation === 'object') return element.animation.duration || element.animationSpeed || 500
+    return element.animationSpeed || 500
+  }
+
   // Get animation class for an element
   const getAnimationClass = (element) => {
-    if (!isAnimationPreview || !element.animation || element.animation === 'none') return ''
+    const animType = getAnimType(element)
+    if (!isAnimationPreview || !animType || animType === 'none') return ''
 
     const animMap = {
       'fadeIn': 'anim-fadeIn',
@@ -1718,15 +1912,16 @@ const EditorPage = () => {
       'rubberBand': 'anim-rubberBand',
     }
 
-    return animMap[element.animation] || ''
+    return animMap[animType] || ''
   }
 
   // Get animation style variables
   const getAnimationStyle = (element) => {
-    if (!isAnimationPreview || !element.animation || element.animation === 'none') return {}
+    const animType = getAnimType(element)
+    if (!isAnimationPreview || !animType || animType === 'none') return {}
 
     return {
-      '--anim-duration': `${element.animationSpeed || 500}ms`,
+      '--anim-duration': `${getAnimDuration(element)}ms`,
       '--anim-delay': `${element.animationDelay || 0}ms`,
     }
   }
@@ -1938,6 +2133,10 @@ const EditorPage = () => {
               alt={element.caption || "canvas"}
               className={`${element.caption && element.showCaption ? 'flex-1' : 'w-full h-full'} object-cover rounded`}
               draggable={false}
+              onError={(e) => {
+                e.target.style.display = 'none'
+                e.target.parentNode.classList.add('bg-gray-100')
+              }}
             />
             {/* Image caption support */}
             {element.caption && element.showCaption && (
@@ -2512,9 +2711,15 @@ const EditorPage = () => {
                   {Array(element.cols).fill(null).map((_, colIdx) => (
                     <td
                       key={`${rowIdx}-${colIdx}`}
-                      className="border border-gray-400 p-2 text-xs"
+                      className="border border-gray-400 p-2 text-xs outline-none focus:bg-primary/5"
                       contentEditable
                       suppressContentEditableWarning
+                      onBlur={(e) => {
+                        const newData = (element.data || []).map(r => [...r])
+                        if (!newData[rowIdx]) newData[rowIdx] = []
+                        newData[rowIdx][colIdx] = e.currentTarget.textContent
+                        updateElement(element.id, { data: newData })
+                      }}
                     >
                       {element.data?.[rowIdx]?.[colIdx] || ''}
                     </td>
@@ -2636,14 +2841,39 @@ const EditorPage = () => {
   }, [focusOverview, frameMapLayout.length])
 
   const handleFrameFocus = useCallback((frameId, mode = 'frame') => {
-    setIsNavigating(false); // Make sure transition is enabled for focus
-    setActiveFrameId(frameId)
-    if (mode === 'overview') {
-      focusOverview()
+    // Skip focus/zoom if user just finished dragging a frame
+    if (didFrameDragRef.current) {
+      didFrameDragRef.current = false
       return
     }
-    focusFrameById(frameId)
-  }, [focusFrameById, focusOverview, setActiveFrameId])
+    pendingFocusModeRef.current = mode
+    setActiveFrameId(frameId)
+  }, [setActiveFrameId])
+
+  // Wrap addFrame so the auto-focus effect picks up the new frame
+  const handleAddFrame = useCallback((templateType) => {
+    pendingFocusModeRef.current = 'frame'
+    addFrame(templateType)
+    // addFrame already calls setActiveFrameId(newId), triggering the effect below
+  }, [addFrame])
+
+  // Auto-focus camera when activeFrameId changes (covers clicks, new frame addition, etc.)
+  const prevActiveFrameIdRef = useRef(activeFrameId)
+  useEffect(() => {
+    if (activeFrameId !== prevActiveFrameIdRef.current) {
+      prevActiveFrameIdRef.current = activeFrameId
+      setIsNavigating(false) // enable CSS transition for smooth animation
+      if (pendingFocusModeRef.current === 'overview') {
+        focusOverview()
+      } else {
+        const target = frameMapLayout.find(f => f.id === activeFrameId)
+        if (target) {
+          // Use gentler zoom (0.55) so frame doesn't appear to grow dramatically
+          updateCameraToBox(target, 0.55)
+        }
+      }
+    }
+  }, [activeFrameId, frameMapLayout, updateCameraToBox, focusOverview])
 
   return (
     <div className="h-screen flex flex-col bg-gray-100 relative">
@@ -2668,9 +2898,9 @@ const EditorPage = () => {
       <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-3 sm:px-4 relative z-10">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/home')}
             className="p-2 hover:bg-gray-100 rounded-md transition-all text-gray-600"
-            title="Back"
+            title="Home"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="3" y1="6" x2="21" y2="6" />
@@ -2737,28 +2967,33 @@ const EditorPage = () => {
         />
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="hidden lg:block text-xs text-gray-500">
-            {isSaving ? 'Saving...' : (lastSavedTime || lastSaved) ? 'Saved' : ''}
+          <div className="flex items-center gap-2">
+            <div className="hidden lg:block text-xs text-gray-400">
+              {isSaving ? 'Saving...' : lastSavedTime ? `Saved` : lastSaved ? 'Saved' : 'Unsaved'}
+            </div>
+            <button
+              onClick={handleSaveProject}
+              disabled={isSaving}
+              title="Save (Ctrl+S)"
+              className="h-8 px-3 rounded-md border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 transition-all disabled:opacity-50"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              Save
+            </button>
           </div>
 
-          <button className="p-2 rounded-md hover:bg-gray-100 text-gray-600 transition-all" title="Bookmark">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-            </svg>
-          </button>
-
-          <div className="flex items-center gap-1 text-gray-700 text-sm font-semibold">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M8 12h8" />
-              <path d="M12 8v8" />
-            </svg>
-            1000
+          <div
+            className="w-8 h-8 rounded-full bg-cyan-500 text-white text-xs font-bold flex items-center justify-center uppercase select-none"
+            title={user?.name || user?.email || 'User'}
+          >
+            {(user?.name || user?.email || 'U').slice(0, 2)}
           </div>
 
-          <div className="w-8 h-8 rounded-full bg-cyan-400 text-white text-xs font-bold flex items-center justify-center">DM</div>
-
-            <div className="relative group">
+<div className="relative group">
               <button
                 onClick={handlePresent}
                 className="h-9 px-3 rounded-md bg-[#2f7df6] hover:bg-[#226de1] text-white text-sm font-semibold flex items-center gap-1.5 transition-all"
@@ -3461,7 +3696,7 @@ const EditorPage = () => {
           frames={frames}
           activeFrame={activeFrameId}
           setActiveFrame={handleFrameFocus}
-          addNewFrame={addFrame}
+          addNewFrame={handleAddFrame}
           deleteFrame={deleteFrame}
           duplicateFrame={duplicateFrame}
           reorderFrames={reorderFrames}
@@ -3557,35 +3792,41 @@ const EditorPage = () => {
                 const frameData = frames.find(f => f.id === frameBox.id)
                 const frameElements = selected ? elements : (frameData?.elements || [])
                 const isOverviewFrame = frameData?.preview === 'Overview'
+                // Resize cursor for the active frame border area
+                const frameCursor = isOverviewFrame ? 'default' : (draggingFrameId === frameBox.id ? 'grabbing' : 'grab')
                 return (
+                  // Outer wrapper: no overflow-clip, holds resize handles
                   <div
                     key={frameBox.id}
-                    onClick={() => handleFrameFocus(frameBox.id, 'frame')} onMouseDown={(e) => handleFrameDragStart(e, frameBox)}
-                    className="absolute cursor-pointer"
-                    style={{
-                      left: frameBox.x,
-                      top: frameBox.y,
-                      width: frameBox.width,
-                      height: frameBox.height,
-                      border: isOverviewFrame
-                        ? 'none'
-                        : (selected ? '2px solid #1a73e8' : '1px solid #e5e7eb'),
-                      borderRadius: isOverviewFrame ? '20px' : '16px',
-                      background: isOverviewFrame
-                        ? 'transparent'
-                        : (frameData?.backgroundImage
-                          ? `url("${frameData.backgroundImage}") center/cover no-repeat`
-                          : (editorBgImage && (!frameData?.backgroundColor || frameData.backgroundColor === '#ffffff')
-                            ? 'transparent'
-                            : (frameData?.backgroundColor || 'transparent'))),
-                      boxShadow: isOverviewFrame
-                        ? 'none'
-                        : (selected ? '0 14px 40px rgba(15, 23, 42, 0.18)' : '0 8px 24px rgba(15, 23, 42, 0.12)'),
-                      overflow: 'hidden',
-                      transition: 'all 0.2s ease',
-                    }}
-                    title={`Frame ${frameIdx + 1}`}
+                    className="absolute"
+                    style={{ left: frameBox.x, top: frameBox.y, width: frameBox.width, height: frameBox.height, zIndex: selected ? 10 : 1 }}
                   >
+                    {/* Inner frame: clip content, handle click/drag */}
+                    <div
+                      onClick={() => handleFrameFocus(frameBox.id, 'frame')}
+                      onMouseDown={(e) => { if (!isResizingFrame) handleFrameDragStart(e, frameBox) }}
+                      className="absolute inset-0"
+                      style={{
+                        cursor: frameCursor,
+                        border: isOverviewFrame
+                          ? 'none'
+                          : (selected ? '2px solid #1a73e8' : '1px solid #e5e7eb'),
+                        borderRadius: isOverviewFrame ? '20px' : '16px',
+                        background: isOverviewFrame
+                          ? 'transparent'
+                          : (frameData?.backgroundImage
+                            ? `url("${frameData.backgroundImage}") center/cover no-repeat`
+                            : (editorBgImage && (!frameData?.backgroundColor || frameData.backgroundColor === '#ffffff')
+                              ? 'transparent'
+                              : (frameData?.backgroundColor || 'transparent'))),
+                        boxShadow: isOverviewFrame
+                          ? 'none'
+                          : (selected ? '0 14px 40px rgba(15, 23, 42, 0.18)' : '0 8px 24px rgba(15, 23, 42, 0.12)'),
+                        overflow: 'hidden',
+                        transition: 'border 0.15s, box-shadow 0.15s',
+                      }}
+                      title={`Frame ${frameIdx + 1}`}
+                    >
                     <div style={{
                       width: SLIDE_WIDTH,
                       height: SLIDE_HEIGHT,
@@ -3648,6 +3889,23 @@ const EditorPage = () => {
                         </div>
                       ))}
                     </div>
+                    </div>
+
+                    {/* Frame resize handles — only on selected non-overview frames */}
+                    {selected && !isOverviewFrame && (
+                      <>
+                        {/* Corners */}
+                        <div className="absolute -top-2 -left-2 w-4 h-4 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-nw-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'nw', frameBox)} />
+                        <div className="absolute -top-2 -right-2 w-4 h-4 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-ne-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'ne', frameBox)} />
+                        <div className="absolute -bottom-2 -left-2 w-4 h-4 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-sw-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'sw', frameBox)} />
+                        <div className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-se-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'se', frameBox)} />
+                        {/* Edges */}
+                        <div className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-3 h-8 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-w-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'w', frameBox)} />
+                        <div className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3 h-8 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-e-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'e', frameBox)} />
+                        <div className="absolute left-1/2 -translate-x-1/2 -top-1.5 h-3 w-8 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-n-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 'n', frameBox)} />
+                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 h-3 w-8 bg-white border-2 border-[#1a73e8] rounded-sm shadow cursor-s-resize hover:bg-[#1a73e8] transition-colors z-20" onMouseDown={(e) => handleFrameResizeStart(e, 's', frameBox)} />
+                      </>
+                    )}
                   </div>
                 )
               })}
@@ -3726,9 +3984,11 @@ const EditorPage = () => {
 
               <button
                 onClick={() => {
-                  const next = Math.max(0.25, camera.zoom - 0.1)
+                  setIsNavigating(true)
+                  const next = Math.max(0.1, camera.zoom - 0.1)
                   setCamera(prev => ({ ...prev, zoom: next }))
                   setZoom(Math.round(next * 100))
+                  setTimeout(() => setIsNavigating(false), 50)
                 }}
                 className="text-lg hover:text-gray-900 transition-all"
                 title="Zoom out"
@@ -3741,14 +4001,16 @@ const EditorPage = () => {
                 className="text-sm font-semibold hover:text-gray-900 transition-all"
                 title="Reset zoom"
               >
-                98%
+                {Math.round(camera.zoom * 100)}%
               </button>
 
               <button
                 onClick={() => {
+                  setIsNavigating(true)
                   const next = Math.min(2.2, camera.zoom + 0.1)
                   setCamera(prev => ({ ...prev, zoom: next }))
                   setZoom(Math.round(next * 100))
+                  setTimeout(() => setIsNavigating(false), 50)
                 }}
                 className="text-lg hover:text-gray-900 transition-all"
                 title="Zoom in"
@@ -3889,8 +4151,8 @@ const EditorPage = () => {
                 <div className="pt-3 border-t border-gray-100">
                   <label className="text-xs text-gray-500 block mb-2">Animation</label>
                   <select
-                    value={selectedElement.animation || 'none'}
-                    onChange={(e) => updateElementAnimation(selectedElementId, e.target.value)}
+                    value={selectedElement.animation?.type || selectedElement.animation || 'none'}
+                    onChange={(e) => updateElementAnimation(selectedElementId, { type: e.target.value, duration: ANIMATION_PRESETS[e.target.value]?.duration || 500 })}
                     className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded mb-2"
                   >
                     {Object.entries(ANIMATION_PRESETS).map(([key, preset]) => (
@@ -3905,8 +4167,8 @@ const EditorPage = () => {
                         min="100"
                         max="2000"
                         step="50"
-                        value={selectedElement.animationSpeed || 300}
-                        onChange={(e) => updateElement(selectedElementId, { animationSpeed: parseInt(e.target.value) || 300 })}
+                        value={selectedElement.animation?.duration || selectedElement.animationSpeed || 300}
+                        onChange={(e) => updateElementAnimation(selectedElementId, { type: selectedElement.animation?.type || selectedElement.animation || 'none', duration: parseInt(e.target.value) || 300 })}
                         className="w-full px-2 py-1 text-sm border border-gray-200 rounded"
                       />
                     </div>

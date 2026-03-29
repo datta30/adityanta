@@ -12,6 +12,51 @@ const PREZI_LAYOUT_PRESETS = [
 ]
 const PREZI_FLOW_ORDER = [1, 2, 0, 3, 4]
 
+const FRAME_GAP = 20
+const FRAME_MIN_H = 80
+const BG_L = 20, BG_T = 80, BG_R = 2940, BG_B = 1190
+const HERO_LAYOUT = { x: 820, y: 220, width: 1280, height: 720 }
+const LEFT_AREA  = { x: 40,   y: 100, w: 760, h: 1070 }
+const RIGHT_AREA = { x: 2120, y: 100, w: 800, h: 1070 }
+
+const clampToBg = (layout) => {
+  const w = layout.width  || 200
+  const h = layout.height || 150
+  return {
+    ...layout,
+    x: Math.max(BG_L, Math.min(layout.x, BG_R - w)),
+    y: Math.max(BG_T, Math.min(layout.y, BG_B - h)),
+  }
+}
+
+const layoutsForSideArea = (area, count) => {
+  if (count === 0) return []
+  let cols = 1
+  while (cols < 4) {
+    const rows = Math.ceil(count / cols)
+    if ((area.h - FRAME_GAP * (rows - 1)) / rows >= FRAME_MIN_H) break
+    cols++
+  }
+  const rows = Math.ceil(count / cols)
+  const colW = Math.floor((area.w - FRAME_GAP * (cols - 1)) / cols)
+  const rowH = Math.max(FRAME_MIN_H, Math.floor((area.h - FRAME_GAP * (rows - 1)) / rows))
+  return Array.from({ length: count }, (_, i) => ({
+    x: area.x + (i % cols) * (colW + FRAME_GAP),
+    y: area.y + Math.floor(i / cols) * (rowH + FRAME_GAP),
+    width: colW,
+    height: rowH,
+  }))
+}
+
+const computeFrameLayouts = (sideCount) => {
+  if (sideCount === 0) return []
+  const leftN = Math.ceil(sideCount / 2)
+  return [
+    ...layoutsForSideArea(LEFT_AREA,  leftN),
+    ...layoutsForSideArea(RIGHT_AREA, sideCount - leftN),
+  ]
+}
+
 const buildInterFrameConnectors = (layout) => {
   if (!Array.isArray(layout) || layout.length < 2) return []
   const order = (layout.length >= 5
@@ -78,22 +123,55 @@ const PresentationPage = () => {
   const [camera, setCamera] = useState({ zoom: 1, panX: 0, panY: 0 })
 
   const getAnimationClass = (animation) => {
-    switch (animation) {
-      case 'fade': return 'anim-fadeIn'
-      case 'slide-up': return 'anim-slideInUp'
-      case 'slide-right': return 'anim-slideInRight'
-      case 'zoom': return 'anim-zoomIn'
-      case 'bounce': return 'anim-bounceIn'
-      default: return ''
+    if (!animation || animation === 'none') return ''
+    const animMap = {
+      'fadeIn': 'anim-fadeIn',
+      'fadeOut': 'anim-fadeOut',
+      'slideInLeft': 'anim-slideInLeft',
+      'slideInRight': 'anim-slideInRight',
+      'slideInUp': 'anim-slideInUp',
+      'slideInDown': 'anim-slideInDown',
+      'zoomIn': 'anim-zoomIn',
+      'zoomOut': 'anim-zoomOut',
+      'bounceIn': 'anim-bounceIn',
+      'rotateIn': 'anim-rotateIn',
+      'flipInX': 'anim-flipInX',
+      'flipInY': 'anim-flipInY',
+      'lightSpeedIn': 'anim-lightSpeedIn',
+      'rollIn': 'anim-rollIn',
+      'slideOutLeft': 'anim-slideOutLeft',
+      'slideOutRight': 'anim-slideOutRight',
+      'pulse': 'anim-pulse',
+      'shake': 'anim-shake',
+      'swing': 'anim-swing',
+      'tada': 'anim-tada',
+      'wobble': 'anim-wobble',
+      'heartBeat': 'anim-heartBeat',
+      'rubberBand': 'anim-rubberBand',
+      // Legacy aliases
+      'fade': 'anim-fadeIn',
+      'slide-up': 'anim-slideInUp',
+      'slide-right': 'anim-slideInRight',
+      'zoom': 'anim-zoomIn',
+      'bounce': 'anim-bounceIn',
     }
+    return animMap[animation] || ''
   }
 
   const renderElement = (element, slideKey, elementIndex = 0) => {
-    const animClass = getAnimationClass(element.animation)
-    const animStyle = element.animation && element.animation !== 'none' ? {
-      '--anim-duration': `${Math.round((element.animationSpeed || 500) * 1.35)}ms`,
+    // Normalise animation — may be a string key or { type, duration } object
+    const animType = typeof element.animation === 'object'
+      ? (element.animation?.type || 'none')
+      : (element.animation || 'none')
+    const animDuration = typeof element.animation === 'object'
+      ? (element.animation?.duration || element.animationSpeed || 500)
+      : (element.animationSpeed || 500)
+    const effectiveAnimation = (animType && animType !== 'none') ? animType : 'fadeIn'
+    const animClass = getAnimationClass(effectiveAnimation)
+    const animStyle = {
+      '--anim-duration': `${Math.round(animDuration * 1.35)}ms`,
       '--anim-delay': `${(element.animationDelay || 0) + (elementIndex * 140)}ms`,
-    } : {}
+    }
 
     const baseStyle = {
       position: 'absolute',
@@ -392,23 +470,13 @@ const PresentationPage = () => {
   }
 
     const frameMapLayout = useMemo(() => {
-    const presets = PREZI_LAYOUT_PRESETS
-
-    let rightMost = 0
+    const sideLayouts = computeFrameLayouts(Math.max(0, frames.length - 1))
     return frames.map((frame, index) => {
-      if (frame.layout) return { id: frame.id, ...frame.layout }
-      const p = presets[index]
-      let next
-      if (p) {
-        next = { ...p }
-      } else {
-        next = { width: 640, height: 360, x: rightMost + 60, y: 0 }
+      if (index === 0) {
+        return { id: frame.id, ...(frame.layout ? clampToBg(frame.layout) : HERO_LAYOUT) }
       }
-      rightMost = Math.max(rightMost, next.x + next.width)
-      return {
-        id: frame.id,
-        ...next,
-      }
+      if (frame.layout) return { id: frame.id, ...clampToBg(frame.layout) }
+      return { id: frame.id, ...(sideLayouts[index - 1] || sideLayouts[sideLayouts.length - 1] || HERO_LAYOUT) }
     })
   }, [frames])
 
@@ -492,9 +560,7 @@ const PresentationPage = () => {
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch((err) => {
-        console.error("Error fullscreen:", err)
-      })
+      document.documentElement.requestFullscreen().catch(() => {})
       setIsFullscreen(true)
     } else {
       if (document.exitFullscreen) {
@@ -528,8 +594,28 @@ const PresentationPage = () => {
         return
       }
       if (!hasStarted) return
-      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') goToNext()
-      if (e.key === 'ArrowLeft') goToPrev()
+
+      // Navigation
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'Enter' || e.key === 'PageDown' || e.key === 'n' || e.key === 'N') {
+        e.preventDefault()
+        goToNext()
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'Backspace' || e.key === 'PageUp' || e.key === 'p' || e.key === 'P') {
+        e.preventDefault()
+        goToPrev()
+      } else if (e.key === 'Home') {
+        e.preventDefault()
+        setCurrentSlideIndex(0)
+      } else if (e.key === 'End') {
+        e.preventDefault()
+        setCurrentSlideIndex(frames.length - 1)
+      } else if (e.key === 'f' || e.key === 'F' || e.key === 'F5' || e.key === 'F11') {
+        e.preventDefault()
+        toggleFullscreen()
+      } else if (/^[1-9]$/.test(e.key)) {
+        // Jump to slide 1-9
+        const slideNum = parseInt(e.key) - 1
+        if (slideNum < frames.length) setCurrentSlideIndex(slideNum)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)

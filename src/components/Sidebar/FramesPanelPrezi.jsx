@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react'
+import { memo, useMemo, useState, useRef, useEffect } from 'react'
 import { PREZI_FRAME_TEMPLATES } from '../../utils/templateData'
 
 const MiniCanvasPreview = memo(({ frame }) => {
@@ -81,11 +81,54 @@ const FramesPanelPrezi = ({
   addNewFrame,
   deleteFrame,
   duplicateFrame,
+  reorderFrames,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const dragIndexRef = useRef(null)
+  const templatePickerRef = useRef(null)
+
+  // Close template picker on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (templatePickerRef.current && !templatePickerRef.current.contains(e.target)) {
+        setShowTemplatePicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const activeIndex = useMemo(() => frames.findIndex((f) => f.id === activeFrame), [frames, activeFrame])
+
+  const handleDragStart = (e, index) => {
+    dragIndexRef.current = index
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', String(index))
+  }
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (index !== dragIndexRef.current) setDragOverIndex(index)
+  }
+
+  const handleDrop = (e, toIndex) => {
+    e.preventDefault()
+    const fromIndex = dragIndexRef.current
+    if (fromIndex !== null && fromIndex !== toIndex) {
+      reorderFrames(fromIndex, toIndex)
+    }
+    dragIndexRef.current = null
+    setDragOverIndex(null)
+  }
+
+  const handleDragEnd = () => {
+    dragIndexRef.current = null
+    setDragOverIndex(null)
+  }
 
   const handleAddFrame = (templateId) => {
     addNewFrame(templateId)
@@ -109,7 +152,7 @@ const FramesPanelPrezi = ({
   return (
     <aside className="relative w-72 bg-white border-r border-gray-200 flex flex-col transition-all duration-200">
       <div className="p-3 border-b border-gray-100">
-        <div className="relative">
+        <div className="relative" ref={templatePickerRef}>
           <button
             onClick={() => setShowTemplatePicker((v) => !v)}
             className="w-full h-11 bg-[#3dba4e] hover:bg-[#34a745] text-white rounded-md px-3 flex items-center justify-between font-semibold transition-all"
@@ -153,18 +196,27 @@ const FramesPanelPrezi = ({
         {frames.map((frame, index) => {
           if (index === 0) return null
           const isActive = activeFrame === frame.id
+          const isDragTarget = dragOverIndex === index
           return (
             <div
               key={frame.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDrop={(e) => handleDrop(e, index)}
+              onDragEnd={handleDragEnd}
               onClick={() => setActiveFrame(frame.id, 'frame')}
-              className={`group cursor-pointer rounded-xl p-2 border-2 transition-all ${
+              className={`group cursor-grab active:cursor-grabbing rounded-xl p-2 border-2 transition-all ${
                 isActive ? 'border-[#3dba4e] bg-green-50/50' : 'border-gray-200 hover:border-gray-300'
-              }`}
+              } ${isDragTarget ? 'ring-2 ring-[#3dba4e] ring-offset-1 scale-[0.98]' : ''}`}
               style={isActive ? { borderWidth: '3px' } : undefined}
             >
               <div className="flex items-start gap-2">
-                <div className="mt-1 w-6 h-6 rounded-full bg-gray-100 text-gray-700 text-xs font-bold flex items-center justify-center">
-                  {index}
+                <div className="flex flex-col items-center gap-1">
+                  <div className="mt-1 w-6 h-6 rounded-full bg-gray-100 text-gray-700 text-xs font-bold flex items-center justify-center">
+                    {index}
+                  </div>
+                  <div className="text-gray-300 text-[10px] leading-none select-none">⠿</div>
                 </div>
 
                 <div className="flex-1">
@@ -182,26 +234,32 @@ const FramesPanelPrezi = ({
                 </div>
               </div>
 
-              <div className="mt-1 hidden group-hover:flex justify-end gap-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    duplicateFrame(frame.id)
-                  }}
-                  className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
-                >
-                  Duplicate
-                </button>
-                {frames.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteFrame(frame.id)
-                    }}
-                    className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 transition-all"
-                  >
-                    Delete
-                  </button>
+              <div className="mt-1 flex items-center justify-end gap-1 min-h-[28px]" onClick={(e) => e.stopPropagation()}>
+                {confirmDeleteId === frame.id ? (
+                  <>
+                    <span className="text-[11px] text-gray-500">Delete?</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteFrame(frame.id) }}
+                      className="text-[11px] px-2 py-1 rounded border border-red-300 bg-red-50 text-red-600 hover:bg-red-100 transition-all font-semibold"
+                    >Yes</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }}
+                      className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
+                    >No</button>
+                  </>
+                ) : (
+                  <div className="hidden group-hover:flex gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); duplicateFrame(frame.id) }}
+                      className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-white transition-all"
+                    >Duplicate</button>
+                    {frames.length > 1 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(frame.id) }}
+                        className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 transition-all"
+                      >Delete</button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
