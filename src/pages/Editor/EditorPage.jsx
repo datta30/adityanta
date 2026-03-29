@@ -1819,9 +1819,22 @@ const EditorPage = () => {
     })
   }
 
+  // Normalise animation — may be { type, duration } object or legacy string key
+  const getAnimType = (element) => {
+    if (!element.animation) return 'none'
+    if (typeof element.animation === 'object') return element.animation.type || 'none'
+    return element.animation
+  }
+
+  const getAnimDuration = (element) => {
+    if (typeof element.animation === 'object') return element.animation.duration || element.animationSpeed || 500
+    return element.animationSpeed || 500
+  }
+
   // Get animation class for an element
   const getAnimationClass = (element) => {
-    if (!isAnimationPreview || !element.animation || element.animation === 'none') return ''
+    const animType = getAnimType(element)
+    if (!isAnimationPreview || !animType || animType === 'none') return ''
 
     const animMap = {
       'fadeIn': 'anim-fadeIn',
@@ -1849,15 +1862,16 @@ const EditorPage = () => {
       'rubberBand': 'anim-rubberBand',
     }
 
-    return animMap[element.animation] || ''
+    return animMap[animType] || ''
   }
 
   // Get animation style variables
   const getAnimationStyle = (element) => {
-    if (!isAnimationPreview || !element.animation || element.animation === 'none') return {}
+    const animType = getAnimType(element)
+    if (!isAnimationPreview || !animType || animType === 'none') return {}
 
     return {
-      '--anim-duration': `${element.animationSpeed || 500}ms`,
+      '--anim-duration': `${getAnimDuration(element)}ms`,
       '--anim-delay': `${element.animationDelay || 0}ms`,
     }
   }
