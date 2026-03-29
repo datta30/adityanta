@@ -2064,6 +2064,10 @@ const EditorPage = () => {
               alt={element.caption || "canvas"}
               className={`${element.caption && element.showCaption ? 'flex-1' : 'w-full h-full'} object-cover rounded`}
               draggable={false}
+              onError={(e) => {
+                e.target.style.display = 'none'
+                e.target.parentNode.classList.add('bg-gray-100')
+              }}
             />
             {/* Image caption support */}
             {element.caption && element.showCaption && (
@@ -2634,9 +2638,15 @@ const EditorPage = () => {
                   {Array(element.cols).fill(null).map((_, colIdx) => (
                     <td
                       key={`${rowIdx}-${colIdx}`}
-                      className="border border-gray-400 p-2 text-xs"
+                      className="border border-gray-400 p-2 text-xs outline-none focus:bg-primary/5"
                       contentEditable
                       suppressContentEditableWarning
+                      onBlur={(e) => {
+                        const newData = (element.data || []).map(r => [...r])
+                        if (!newData[rowIdx]) newData[rowIdx] = []
+                        newData[rowIdx][colIdx] = e.currentTarget.textContent
+                        updateElement(element.id, { data: newData })
+                      }}
                     >
                       {element.data?.[rowIdx]?.[colIdx] || ''}
                     </td>
@@ -2862,22 +2872,12 @@ const EditorPage = () => {
             {isSaving ? 'Saving...' : (lastSavedTime || lastSaved) ? 'Saved' : ''}
           </div>
 
-          <button className="p-2 rounded-md hover:bg-gray-100 text-gray-600 transition-all" title="Bookmark">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-            </svg>
-          </button>
-
-          <div className="flex items-center gap-1 text-gray-700 text-sm font-semibold">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M8 12h8" />
-              <path d="M12 8v8" />
-            </svg>
-            1000
+          <div
+            className="w-8 h-8 rounded-full bg-cyan-500 text-white text-xs font-bold flex items-center justify-center uppercase select-none"
+            title={user?.name || user?.email || 'User'}
+          >
+            {(user?.name || user?.email || 'U').slice(0, 2)}
           </div>
-
-          <div className="w-8 h-8 rounded-full bg-cyan-400 text-white text-xs font-bold flex items-center justify-center">DM</div>
 
           <button
             onClick={handlePresent}
