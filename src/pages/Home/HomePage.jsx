@@ -700,7 +700,7 @@ const HomePage = () => {
     return (
       <div
         onClick={() => handleTemplateClick(template)}
-        className="bg-white rounded-2xl overflow-hidden shadow-sm transition-all cursor-pointer"
+        className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
       >
         <div className={`h-44 bg-gradient-to-br ${template.gradient} relative flex items-center justify-center overflow-hidden`}>
           {/* Thumbnail Image (if available from API) */}

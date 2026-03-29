@@ -1279,6 +1279,7 @@ const EditorPage = () => {
   const handleElementClick = (element, e) => {
     e.stopPropagation()
     setSelectedElementId(element.id)
+    setRightPanelTab('properties')
     if (element.type === 'text') {
       setShowTextToolbar(true)
       // If it's a placeholder, start editing immediately on single click
